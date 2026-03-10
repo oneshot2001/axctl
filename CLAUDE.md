@@ -1,111 +1,131 @@
+# AOA CLI (axctl) — CLAUDE.md
+
+## Vault Memory
+At session start, read these files in order:
+1. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/context.md
+2. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/decisions.md
+3. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/patterns.md
+4. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/bugs.md
+5. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/architecture.md
+6. Last 3 files (by date) in ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/dev-log/
+7. All files in ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/05-Knowledge/patterns/
+
+Vault root: ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain
+
+## Auto-Capture Rules
+During this session, track:
+1. Every architectural decision (what, alternatives considered, why)
+2. Every bug fixed (symptom, root cause, fix, prevention rule)
+3. Every reusable pattern discovered (code snippet, when to use, where it applies)
+4. Architecture changes (new commands, client changes, data flow changes)
+
+At session end, automatically write:
+- Session log to: [vault]/02-Projects/aoa-cli/dev-log/YYYY-MM-DD-session-N.md
+- Append new decisions to: [vault]/02-Projects/aoa-cli/decisions.md
+- Append new bugs to: [vault]/02-Projects/aoa-cli/bugs.md
+- Update if changed: [vault]/02-Projects/aoa-cli/architecture.md
+
+## Session Log Format
+
+```markdown
 ---
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
-alwaysApply: false
+date: YYYY-MM-DD
+session: N
+project: aoa-cli
+tags: [dev-log]
 ---
 
-Default to using Bun instead of Node.js.
+# Dev Session — AOA CLI — YYYY-MM-DD #N
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Summary
+[1-2 sentence overview of what this session accomplished]
 
-## APIs
+## What Was Built
+- [Feature/fix 1]: [brief description]
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+## Decisions Made
+### [Decision Title]
+- **Options considered:** [option A], [option B]
+- **Chosen:** [option]
+- **Reasoning:** [why]
+- **Trade-offs:** [what we gave up]
 
-## Testing
+## Bugs Encountered & Fixed
+### [Bug Title]
+- **Symptom:** [what you saw]
+- **Root cause:** [why it happened]
+- **Fix:** [what resolved it]
+- **Prevention:** [rule to avoid in future]
+- **Files changed:** [paths]
 
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+## Patterns Discovered
+### [Pattern Name]
+- **When to use:** [description]
+```typescript
+[code snippet]
 ```
 
-## Frontend
+## Architecture Changes
+- [Change]: [before] -> [after]
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+## Open Questions
+- [ ] [Unresolved question]
 
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
+## Next Session Should
+- [Top priority]
 ```
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+## Project Details
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
+### Stack
+- Bun + TypeScript (strict)
+- Commander.js (CLI framework)
+- Native fetch + custom HTTP Digest Auth
+- mqtt.js (event streaming)
+- bonjour-service + custom SSDP (discovery)
+- js-yaml (config)
+- cli-table3 (output formatting)
+
+### Build Commands
+```bash
+# Dev run
+bun run src/index.ts
+
+# Build single binary
+bun build --compile src/index.ts --outfile axctl
+
+# Test
+bun test
+
+# Type check
+bunx tsc --noEmit
 ```
 
-With the following `frontend.tsx`:
+### Deploy
+```bash
+# macOS ARM64
+bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dist/axctl-macos-arm64
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
+# macOS x86
+bun build --compile --target=bun-darwin-x64 src/index.ts --outfile dist/axctl-macos-x64
 
-// import .css files directly and it works
-import './index.css';
+# Linux ARM64
+bun build --compile --target=bun-linux-arm64 src/index.ts --outfile dist/axctl-linux-arm64
 
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
+# Linux x86
+bun build --compile --target=bun-linux-x64 src/index.ts --outfile dist/axctl-linux-x64
 ```
 
-Then, run index.ts
+### Quality Gates
+1. Build passes (`bun build --compile src/index.ts --outfile axctl`)
+2. Tests pass (`bun test`)
+3. Types verified (`bunx tsc --noEmit`)
+4. Tested against at least one real Axis camera on local network
+5. Git: staged, committed, pushed
 
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+### Key Axis References
+- VAPIX AOA control: `POST /local/objectanalytics/control.cgi`
+- VAPIX device info: `GET /axis-cgi/basicdeviceinfo.cgi`
+- Analytics MQTT API (AXIS OS 12.2+): `GET /config/rest/analytics-mqtt/v1beta/data_sources`
+- mDNS service type: `_axis-video._tcp`
+- SSDP multicast: `239.255.255.250:1900`
