@@ -2,7 +2,7 @@ import { program } from './root.js'
 import { credentialStore } from '../lib/credential-store.js'
 import { fleetStore } from '../lib/fleet-store.js'
 import { discoverAll } from '../lib/discovery.js'
-import Table from 'cli-table3'
+import { formatOutput } from '../formatters/index.js'
 
 const fleet = program
   .command('fleet')
@@ -12,7 +12,7 @@ fleet
   .command('create <name>')
   .description('create a fleet from a device list or discovery')
   .option('-d, --devices <ips>', 'comma-separated IPs (e.g. 192.168.1.33,192.168.1.34)')
-  .option('--from-discover', 'populate from last discovery scan (5s scan)')
+  .option('--from-discover', 'populate from live discovery scan (5s scan)')
   .action(async (name: string, opts: { devices?: string; fromDiscover?: boolean }) => {
     let ips: string[] = []
 
@@ -37,28 +37,26 @@ fleet
   .command('list')
   .description('list all fleets')
   .action(() => {
+    const fmt = program.opts().format as string
     const fleets = fleetStore.list()
     if (fleets.length === 0) { console.log('No fleets. Use: axctl fleet create <name> --devices <ips>'); return }
-    const table = new Table({ head: ['Name', 'Devices', 'IPs'] })
-    for (const f of fleets) {
-      table.push([f.name, f.ips.length.toString(), f.ips.join(', ')])
-    }
-    console.log(table.toString())
+    const rows = fleets.map((f) => ({ name: f.name, devices: f.ips.length, ips: f.ips.join(', ') }))
+    console.log(formatOutput(rows, fmt))
   })
 
 fleet
   .command('show <name>')
   .description('show fleet members')
   .action((name: string) => {
+    const fmt = program.opts().format as string
     const f = fleetStore.get(name)
     if (!f) { console.error(`Fleet "${name}" not found`); process.exit(1) }
-    const table = new Table({ head: ['IP', 'Credentials'] })
-    for (const ip of f.ips) {
-      const hasCreds = credentialStore.has(ip)
-      table.push([ip, hasCreds ? '✓ stored' : '✗ none — run axctl auth add ' + ip])
-    }
-    console.log(`Fleet: ${f.name} (${f.ips.length} devices)`)
-    console.log(table.toString())
+    const rows = f.ips.map((ip) => ({
+      ip,
+      credentials: credentialStore.has(ip) ? 'stored' : 'none — run: axctl auth add ' + ip,
+    }))
+    if (fmt === 'table') console.log(`Fleet: ${f.name} (${f.ips.length} devices)`)
+    console.log(formatOutput(rows, fmt))
   })
 
 fleet

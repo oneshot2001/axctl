@@ -1,7 +1,7 @@
 import { program } from './root.js'
 import { VapixClient } from '../lib/vapix-client.js'
 import { credentialStore } from '../lib/credential-store.js'
-import Table from 'cli-table3'
+import { formatOutput } from '../formatters/index.js'
 
 const devices = program
   .command('devices')
@@ -19,30 +19,22 @@ devices
     }
 
     const client = new VapixClient(ip, cred.username, cred.password)
-    const format = program.opts().format as string
+    const fmt = program.opts().format as string
 
     try {
       const info = await client.getDeviceInfo()
-
-      if (format === 'json') {
-        console.log(JSON.stringify(info, null, 2))
-        return
+      const row = {
+        ip,
+        model: info.ProdFullName ?? info.ProdNbr ?? 'unknown',
+        serial: info.SerialNumber ?? 'unknown',
+        firmware: info.Version ?? 'unknown',
+        soc: info.Soc ?? 'unknown',
+        architecture: info.Architecture ?? 'unknown',
+        hardwareId: info.HardwareID ?? 'unknown',
+        buildDate: info.BuildDate ?? 'unknown',
+        type: info.ProdType ?? 'unknown',
       }
-
-      const table = new Table({ head: ['Property', 'Value'] })
-      const fields: [string, string][] = [
-        ['IP', ip],
-        ['Model', info.ProdFullName ?? info.ProdNbr ?? 'unknown'],
-        ['Serial', info.SerialNumber ?? 'unknown'],
-        ['Firmware', info.Version ?? 'unknown'],
-        ['SoC', info.Soc ?? 'unknown'],
-        ['Architecture', info.Architecture ?? 'unknown'],
-        ['Hardware ID', info.HardwareID ?? 'unknown'],
-        ['Build Date', info.BuildDate ?? 'unknown'],
-        ['Type', info.ProdType ?? 'unknown'],
-      ]
-      for (const [k, v] of fields) table.push([k, v])
-      console.log(table.toString())
+      console.log(formatOutput(row, fmt))
     } catch (e) {
       console.error(`Error: ${e instanceof Error ? e.message : e}`)
       process.exit(1)
@@ -78,7 +70,7 @@ devices
   .command('list')
   .description('list all devices with stored credentials')
   .action(async () => {
-    const format = program.opts().format as string
+    const fmt = program.opts().format as string
     const creds = credentialStore.list()
 
     if (creds.length === 0) {
@@ -86,29 +78,25 @@ devices
       return
     }
 
-    if (format === 'json') {
-      const results = await Promise.allSettled(
-        creds.map(async (c) => {
-          const client = new VapixClient(c.ip, c.username, c.password)
-          const info = await client.getDeviceInfo()
-          return { ip: c.ip, ...info }
-        })
-      )
-      console.log(JSON.stringify(results.map(r => r.status === 'fulfilled' ? r.value : { error: 'unreachable' }), null, 2))
-      return
-    }
-
-    const table = new Table({ head: ['IP', 'Model', 'Serial', 'Firmware', 'SoC', 'Status'] })
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       creds.map(async (c) => {
         try {
           const client = new VapixClient(c.ip, c.username, c.password)
           const info = await client.getDeviceInfo()
-          table.push([c.ip, info.ProdShortName ?? '?', info.SerialNumber ?? '?', info.Version ?? '?', info.Soc ?? '?', '✓'])
+          return {
+            ip: c.ip,
+            model: info.ProdShortName ?? '?',
+            serial: info.SerialNumber ?? '?',
+            firmware: info.Version ?? '?',
+            soc: info.Soc ?? '?',
+            status: 'online',
+          }
         } catch {
-          table.push([c.ip, '—', '—', '—', '—', '✗ unreachable'])
+          return { ip: c.ip, model: '—', serial: '—', firmware: '—', soc: '—', status: 'unreachable' }
         }
       })
     )
-    console.log(table.toString())
+
+    const rows = results.map((r) => (r.status === 'fulfilled' ? r.value : { ip: '?', model: '—', serial: '—', firmware: '—', soc: '—', status: 'error' }))
+    console.log(formatOutput(rows, fmt))
   })

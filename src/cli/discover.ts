@@ -2,7 +2,7 @@ import { program } from './root.js'
 import { discoverAll } from '../lib/discovery.js'
 import { VapixClient } from '../lib/vapix-client.js'
 import { credentialStore } from '../lib/credential-store.js'
-import Table from 'cli-table3'
+import { formatOutput } from '../formatters/index.js'
 
 program
   .command('discover')
@@ -11,7 +11,7 @@ program
   .option('--enrich', 'fetch full device info for discovered cameras (requires stored credentials)')
   .action(async (opts: { timeout: string; enrich?: boolean }) => {
     const timeoutMs = parseInt(opts.timeout) * 1000
-    const format = program.opts().format as string
+    const fmt = program.opts().format as string
 
     process.stderr.write(`Scanning for Axis cameras (${opts.timeout}s)...\n`)
 
@@ -22,7 +22,6 @@ program
       return
     }
 
-    // Optionally enrich with VAPIX data for devices we have credentials for
     if (opts.enrich) {
       await Promise.allSettled(
         devices.map(async (d, i) => {
@@ -42,23 +41,16 @@ program
       )
     }
 
-    if (format === 'json') {
-      console.log(JSON.stringify(devices, null, 2))
-      return
-    }
+    const rows = devices.map((d) => ({
+      ip: d.ip,
+      model: d.model,
+      serial: d.serial,
+      firmware: d.firmwareVersion,
+      mac: d.macAddress ?? '—',
+    }))
 
-    if (format === 'jsonl') {
-      for (const d of devices) console.log(JSON.stringify(d))
-      return
+    console.log(formatOutput(rows, fmt))
+    if (fmt === 'table') {
+      process.stderr.write(`\nFound ${devices.length} camera${devices.length === 1 ? '' : 's'}\n`)
     }
-
-    const table = new Table({
-      head: ['IP', 'Model', 'Serial', 'Firmware', 'MAC'],
-    })
-    for (const d of devices) {
-      table.push([d.ip, d.model, d.serial, d.firmwareVersion, d.macAddress ?? '—'])
-    }
-
-    console.log(table.toString())
-    console.log(`\nFound ${devices.length} camera${devices.length === 1 ? '' : 's'}`)
   })
