@@ -5,6 +5,7 @@ import './cli/devices.js'
 import './cli/discover.js'
 import './cli/fleet.js'
 import './cli/analytics.js'
+import './cli/apps.js'
 import './cli/events.js'
 
 program.parse(process.argv)
