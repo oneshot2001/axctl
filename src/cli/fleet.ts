@@ -3,10 +3,15 @@ import { credentialStore } from '../lib/credential-store.js'
 import { fleetStore } from '../lib/fleet-store.js'
 import { discoverAll } from '../lib/discovery.js'
 import { formatOutput } from '../formatters/index.js'
+import { fleetExec } from '../lib/fleet-ops.js'
+import { VapixClient } from '../lib/vapix-client.js'
+import { AoaClient } from '../lib/aoa-client.js'
 
 const fleet = program
   .command('fleet')
   .description('manage named groups of cameras')
+
+// ---- CRUD ------------------------------------------------------------------
 
 fleet
   .command('create <name>')
@@ -69,4 +74,131 @@ fleet
       console.error(`Fleet "${name}" not found`)
       process.exit(1)
     }
+  })
+
+// ---- PARALLEL OPS ----------------------------------------------------------
+
+fleet
+  .command('ping <name>')
+  .description('check reachability of all cameras in a fleet')
+  .action(async (name: string) => {
+    const fmt = program.opts().format as string
+    const results = await fleetExec(name, async (ip, user, pass) => {
+      const client = new VapixClient(ip, user, pass)
+      const start = Date.now()
+      const online = await client.ping()
+      return { online, ms: Date.now() - start }
+    })
+
+    const rows = results.map((r) => {
+      if (r.error) return { ip: r.ip, status: 'error', ms: '-', detail: r.error }
+      const d = r.result!
+      return { ip: r.ip, status: d.online ? 'online' : 'offline', ms: d.online ? d.ms : '-', detail: '' }
+    })
+    console.log(formatOutput(rows, fmt))
+  })
+
+fleet
+  .command('status <name>')
+  .description('get model/firmware/serial for all cameras in a fleet')
+  .action(async (name: string) => {
+    const fmt = program.opts().format as string
+    const results = await fleetExec(name, async (ip, user, pass) => {
+      const client = new VapixClient(ip, user, pass)
+      return client.getDeviceInfo()
+    })
+
+    const rows = results.map((r) => {
+      if (r.error) return { ip: r.ip, model: 'error', firmware: '-', serial: '-', detail: r.error }
+      const d = r.result!
+      return { ip: r.ip, model: d.ProdShortName ?? d.Model ?? '?', firmware: d.Version ?? '?', serial: d.ProdSerialNumber ?? '?', detail: '' }
+    })
+    console.log(formatOutput(rows, fmt))
+  })
+
+// ---- FLEET AOA SUBGROUP ----------------------------------------------------
+
+const fleetAoa = fleet
+  .command('aoa')
+  .description('run AOA operations across an entire fleet')
+
+fleetAoa
+  .command('list <name>')
+  .description('list AOA scenarios across all cameras in a fleet')
+  .action(async (name: string) => {
+    const fmt = program.opts().format as string
+    const results = await fleetExec(name, async (ip, user, pass) => {
+      const client = new AoaClient(ip, user, pass)
+      return client.getScenarios()
+    })
+
+    const rows: Record<string, unknown>[] = []
+    for (const r of results) {
+      if (r.error) {
+        rows.push({ ip: r.ip, id: '-', name: 'error', type: '-', objects: r.error })
+        continue
+      }
+      if (!r.result || r.result.length === 0) {
+        rows.push({ ip: r.ip, id: '-', name: '(no scenarios)', type: '-', objects: '-' })
+        continue
+      }
+      for (const s of r.result) {
+        rows.push({
+          ip: r.ip,
+          id: s.id,
+          name: s.name,
+          type: s.type,
+          objects: s.objectClassifications.map((o) => o.type).join(', '),
+          trigger: s.triggers[0]?.type ?? '?',
+        })
+      }
+    }
+    console.log(formatOutput(rows, fmt))
+  })
+
+fleetAoa
+  .command('counts <name> <scenarioId>')
+  .description('get accumulated crossing counts across all cameras (crosslinecounting scenarios)')
+  .action(async (name: string, idStr: string) => {
+    const fmt = program.opts().format as string
+    const id = parseInt(idStr)
+    const results = await fleetExec(name, async (ip, user, pass) => {
+      const client = new AoaClient(ip, user, pass)
+      return client.getAccumulatedCounts(id)
+    })
+
+    const rows = results.map((r) => {
+      if (r.error) return { ip: r.ip, total: 'error', human: '-', vehicle: '-', detail: r.error }
+      const d = r.result!
+      return {
+        ip: r.ip,
+        total: d.total ?? 0,
+        human: d.totalHuman ?? '-',
+        car: d.totalCar ?? '-',
+        truck: d.totalTruck ?? '-',
+        bus: d.totalBus ?? '-',
+        resetTime: d.resetTime ?? '-',
+      }
+    })
+    console.log(formatOutput(rows, fmt))
+  })
+
+fleetAoa
+  .command('create <name> <scenarioName> <type>')
+  .description('create the same scenario on all cameras in a fleet')
+  .option('-o, --objects <classes>', 'object classes (human,vehicle)', 'human,vehicle')
+  .option('-d, --device <id>', 'analytics device ID', '1')
+  .action(async (name: string, scenarioName: string, type: string, opts: { objects: string; device: string }) => {
+    const objects = opts.objects.split(',').map((s) => s.trim()).filter(Boolean)
+    const deviceId = parseInt(opts.device)
+    const results = await fleetExec(name, async (ip, user, pass) => {
+      const client = new AoaClient(ip, user, pass)
+      return client.addScenario(scenarioName, type, deviceId, objects)
+    })
+
+    const rows = results.map((r) => {
+      if (r.error) return { ip: r.ip, status: 'error', id: '-', detail: r.error }
+      return { ip: r.ip, status: '✓ created', id: r.result!.id, detail: '' }
+    })
+    console.log(formatOutput(rows, 'table'))
   })
