@@ -85,7 +85,7 @@ export type ScenarioType = typeof SCENARIO_TYPES[number]
 export const OBJECT_CLASSES = ['human', 'vehicle', 'missing_hardhat'] as const
 
 // Default triggers per scenario type
-function defaultTrigger(type: string): AoaTrigger {
+export function defaultTrigger(type: string): AoaTrigger {
   if (type === 'fence' || type === 'tailgating') {
     return { type: 'fence', alarmDirection: 'leftToRight', vertices: [[0, -0.7], [0, 0.7]] }
   }
@@ -96,7 +96,7 @@ function defaultTrigger(type: string): AoaTrigger {
 }
 
 // Filters valid per scenario type
-function defaultFilters(type: string): AoaFilter[] {
+export function defaultFilters(type: string): AoaFilter[] {
   if (['motion', 'occupancyInArea'].includes(type)) {
     return [
       { type: 'distanceSwayingObject', distance: 5 },
