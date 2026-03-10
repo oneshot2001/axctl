@@ -1,7 +1,7 @@
 {
   "name": "axctl",
   "version": "0.1.0",
-  "description": "Axis camera analytics CLI — configure AOA, stream events, discover devices",
+  "description": "Axis camera analytics CLI \u2014 configure AOA, stream events, discover devices",
   "module": "src/index.ts",
   "main": "src/index.ts",
   "bin": {
@@ -18,7 +18,9 @@
     "build:linux-arm64": "bun build --compile --target=bun-linux-arm64 src/index.ts --outfile dist/axctl-linux-arm64",
     "build:linux-x64": "bun build --compile --target=bun-linux-x64 src/index.ts --outfile dist/axctl-linux-x64",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit",
+    "release": "bun run build:all && cd dist && for f in axctl-*; do tar -czf \"$f.tar.gz\" \"$f\" && echo \"\u2713 $f.tar.gz\"; done",
+    "release:checksums": "cd dist && shasum -a 256 axctl-*.tar.gz > checksums.sha256 && cat checksums.sha256"
   },
   "devDependencies": {
     "@types/bun": "latest",
