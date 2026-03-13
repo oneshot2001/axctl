@@ -236,4 +236,14 @@ export class AoaClient {
   async resetAccumulatedCounts(scenarioId: number): Promise<void> {
     await this.call('resetAccumulatedCounts', { scenario: scenarioId })
   }
+
+  // ---- Export / Import -------------------------------------------------------
+
+  async exportConfiguration(): Promise<AoaConfiguration> {
+    return this.getConfiguration()
+  }
+
+  async importConfiguration(config: AoaConfiguration): Promise<void> {
+    await this.setConfiguration(config)
+  }
 }

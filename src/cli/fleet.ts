@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs'
 import { program } from './root.js'
 import { credentialStore } from '../lib/credential-store.js'
 import { fleetStore } from '../lib/fleet-store.js'
@@ -6,6 +7,7 @@ import { formatOutput } from '../formatters/index.js'
 import { fleetExec } from '../lib/fleet-ops.js'
 import { VapixClient } from '../lib/vapix-client.js'
 import { AoaClient } from '../lib/aoa-client.js'
+import { streamEvents, aoaTopics } from '../lib/event-stream.js'
 
 const fleet = program
   .command('fleet')
@@ -17,21 +19,73 @@ fleet
   .command('create <name>')
   .description('create a fleet from a device list or discovery')
   .option('-d, --devices <ips>', 'comma-separated IPs (e.g. 192.168.1.33,192.168.1.34)')
-  .option('--from-discover', 'populate from live discovery scan (5s scan)')
-  .action(async (name: string, opts: { devices?: string; fromDiscover?: boolean }) => {
+  .option('--from-discover', 'populate from live discovery scan')
+  .option('-t, --timeout <ms>', 'discovery scan timeout in ms', '5000')
+  .option('--model <pattern>', 'filter discovered devices by model (substring match)')
+  .option('--min-firmware <version>', 'filter discovered devices by minimum firmware version')
+  .option('--no-dedup', 'skip deduplication against existing fleets')
+  .action(async (name: string, opts: { devices?: string; fromDiscover?: boolean; timeout: string; model?: string; minFirmware?: string; dedup?: boolean }) => {
+    if (fleetStore.has(name)) {
+      console.error(`Fleet "${name}" already exists. Delete it first: axctl fleet delete ${name}`)
+      process.exit(1)
+    }
+
     let ips: string[] = []
 
     if (opts.devices) {
       ips = opts.devices.split(',').map((s) => s.trim()).filter(Boolean)
     } else if (opts.fromDiscover) {
-      process.stderr.write('Scanning for devices (5s)...\n')
-      const found = await discoverAll(5000)
+      const timeout = parseInt(opts.timeout)
+      process.stderr.write(`Scanning for devices (${timeout / 1000}s)...\n`)
+      let found = await discoverAll(timeout)
+
+      if (found.length === 0) { console.error('No devices found.'); process.exit(1) }
+      process.stderr.write(`Found ${found.length} device(s)\n`)
+
+      // Filter by model
+      if (opts.model) {
+        const pattern = opts.model.toLowerCase()
+        const before = found.length
+        found = found.filter((d) => d.model.toLowerCase().includes(pattern))
+        if (found.length < before) {
+          process.stderr.write(`  Filtered by model "${opts.model}": ${found.length} of ${before}\n`)
+        }
+      }
+
+      // Filter by minimum firmware
+      if (opts.minFirmware) {
+        const minParts = opts.minFirmware.split('.').map(Number)
+        const before = found.length
+        found = found.filter((d) => {
+          const fwParts = d.firmwareVersion.split('.').map(Number)
+          for (let i = 0; i < Math.max(minParts.length, fwParts.length); i++) {
+            const a = fwParts[i] ?? 0
+            const b = minParts[i] ?? 0
+            if (a > b) return true
+            if (a < b) return false
+          }
+          return true // equal
+        })
+        if (found.length < before) {
+          process.stderr.write(`  Filtered by firmware ≥ ${opts.minFirmware}: ${found.length} of ${before}\n`)
+        }
+      }
+
+      if (found.length === 0) { console.error('No devices match filters.'); process.exit(1) }
       ips = found.map((d) => d.ip)
-      if (ips.length === 0) { console.error('No devices found.'); process.exit(1) }
-      console.log(`Found: ${ips.join(', ')}`)
     } else {
       console.error('Specify --devices <ips> or --from-discover')
       process.exit(1)
+    }
+
+    // Deduplicate against existing fleets
+    if (opts.dedup !== false) {
+      const existingFleets = fleetStore.list()
+      const existingIps = new Set(existingFleets.flatMap((f) => f.ips))
+      const dupes = ips.filter((ip) => existingIps.has(ip))
+      if (dupes.length > 0) {
+        process.stderr.write(`  Note: ${dupes.length} device(s) already in other fleets: ${dupes.join(', ')}\n`)
+      }
     }
 
     fleetStore.create(name, ips)
@@ -201,4 +255,136 @@ fleetAoa
       return { ip: r.ip, status: '✓ created', id: r.result!.id, detail: '' }
     })
     console.log(formatOutput(rows, 'table'))
+  })
+
+fleetAoa
+  .command('push <name> <file>')
+  .description('push AOA configuration from JSON file to all cameras in a fleet')
+  .action(async (name: string, file: string) => {
+    let config: import('../lib/aoa-client.js').AoaConfiguration
+    try {
+      config = JSON.parse(readFileSync(file, 'utf-8'))
+    } catch (e) {
+      console.error(`Failed to read ${file}: ${e instanceof Error ? e.message : e}`)
+      process.exit(1)
+    }
+
+    const results = await fleetExec(name, async (ip, user, pass) => {
+      const client = new AoaClient(ip, user, pass)
+      await client.importConfiguration(config)
+      return { scenarios: config.scenarios.length }
+    })
+
+    const rows = results.map((r) => {
+      if (r.error) return { ip: r.ip, status: 'error', scenarios: '-', detail: r.error }
+      return { ip: r.ip, status: '✓ imported', scenarios: r.result!.scenarios, detail: '' }
+    })
+    console.log(formatOutput(rows, 'table'))
+  })
+
+// ---- FLEET EVENTS SUBGROUP -------------------------------------------------
+
+const fleetEvents = fleet
+  .command('events')
+  .description('stream events across an entire fleet')
+
+fleetEvents
+  .command('stream <name>')
+  .description('stream AOA events from all cameras in a fleet')
+  .option('-s, --scenario <ids>', 'comma-separated scenario IDs (default: all)')
+  .option('-c, --count <n>', 'stop after N total events', '0')
+  .option('--active-only', 'only show trigger-start events (active=true)', false)
+  .action(async (name: string, opts: { scenario?: string; count: string; activeOnly: boolean }) => {
+    const f = fleetStore.get(name)
+    if (!f) { console.error(`Fleet "${name}" not found`); process.exit(1) }
+
+    const fmt = program.opts().format as string
+    const maxCount = parseInt(opts.count)
+    let received = 0
+
+    const topicFilters = opts.scenario
+      ? aoaTopics(opts.scenario.split(',').map((s) => parseInt(s.trim())))
+      : undefined // default = all ObjectAnalytics
+
+    const ac = new AbortController()
+
+    // Handle Ctrl+C
+    process.on('SIGINT', () => {
+      process.stderr.write('\nStopping streams...\n')
+      ac.abort()
+    })
+
+    // Resolve credentials for each camera
+    const targets: { ip: string; username: string; password: string }[] = []
+    for (const ip of f.ips) {
+      const cred = credentialStore.get(ip)
+      if (!cred) {
+        process.stderr.write(`⚠ No credentials for ${ip} — skipping (run: axctl auth add ${ip})\n`)
+        continue
+      }
+      targets.push({ ip, username: cred.username, password: cred.password })
+    }
+
+    if (targets.length === 0) {
+      console.error('No cameras with credentials. Run: axctl auth add <ip>')
+      process.exit(1)
+    }
+
+    if (fmt === 'table') {
+      process.stderr.write(`Streaming events from ${targets.length} camera${targets.length === 1 ? '' : 's'} in fleet "${name}" (Ctrl+C to stop)...\n\n`)
+      process.stderr.write('IP               TIME                       SCENARIO  TYPE          OBJECT  CLASS     ACTIVE\n')
+      process.stderr.write('─'.repeat(95) + '\n')
+    }
+
+    let csvHeaderPrinted = false
+
+    const streams = targets.map((t) =>
+      streamEvents(t.ip, t.username, t.password, {
+        topicFilters,
+        signal: ac.signal,
+        onEvent: (event) => {
+          if (opts.activeOnly && !event.active) return
+          if (ac.signal.aborted) return
+
+          received++
+
+          if (fmt === 'json') {
+            console.log(JSON.stringify({ ip: t.ip, ...event }, null, 2))
+          } else if (fmt === 'jsonl') {
+            console.log(JSON.stringify({ ip: t.ip, ...event }))
+          } else if (fmt === 'csv') {
+            if (!csvHeaderPrinted) {
+              console.log('ip,timestamp,triggerTime,scenarioId,scenarioType,objectId,classTypes,active')
+              csvHeaderPrinted = true
+            }
+            console.log(`${t.ip},${event.timestamp},${event.triggerTime},${event.scenarioId},${event.scenarioType},${event.objectId},${event.classTypes},${event.active}`)
+          } else {
+            // table: rolling output with ip column
+            const time = new Date(event.timestamp).toISOString().replace('T', ' ').substring(0, 23)
+            const active = event.active ? '▶ yes' : '◼ no '
+            console.log(
+              `${t.ip.padEnd(15)}  ${time}  ${String(event.scenarioId).padEnd(8)}  ${event.scenarioType.padEnd(12)}  ${event.objectId.padEnd(6)}  ${event.classTypes.padEnd(8)}  ${active}`
+            )
+          }
+
+          if (maxCount > 0 && received >= maxCount) {
+            process.stderr.write(`\nReceived ${received} events. Done.\n`)
+            ac.abort()
+          }
+        },
+        onError: (err) => {
+          process.stderr.write(`[${t.ip}] Stream error: ${err.message}\n`)
+        },
+      })
+    )
+
+    try {
+      await Promise.allSettled(streams)
+    } catch {
+      // streams resolved via allSettled, nothing to catch
+    }
+
+    if (fmt === 'table') {
+      process.stderr.write(`\nTotal events: ${received}\n`)
+    }
   })

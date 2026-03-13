@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'fs'
 import { program } from './root.js'
 import { AoaClient, SCENARIO_TYPES, OBJECT_CLASSES } from '../lib/aoa-client.js'
 import { credentialStore } from '../lib/credential-store.js'
@@ -161,5 +162,38 @@ aoa
     try {
       await client.resetAccumulatedCounts(parseInt(idStr))
       console.log(`✓ Counts reset for scenario ${idStr}`)
+    } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1) }
+  })
+
+// ---- EXPORT / IMPORT -------------------------------------------------------
+
+aoa
+  .command('export <ip>')
+  .description('export full AOA configuration to JSON')
+  .option('-o, --output <file>', 'output file (default: stdout)')
+  .action(async (ip: string, opts: { output?: string }) => {
+    const client = getClient(ip)
+    try {
+      const config = await client.exportConfiguration()
+      const json = JSON.stringify(config, null, 2)
+      if (opts.output) {
+        writeFileSync(opts.output, json + '\n')
+        console.log(`✓ AOA config exported to ${opts.output} (${config.scenarios.length} scenarios)`)
+      } else {
+        console.log(json)
+      }
+    } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1) }
+  })
+
+aoa
+  .command('import <ip> <file>')
+  .description('import AOA configuration from JSON file')
+  .action(async (ip: string, file: string) => {
+    const client = getClient(ip)
+    try {
+      const raw = readFileSync(file, 'utf-8')
+      const config = JSON.parse(raw) as import('../lib/aoa-client.js').AoaConfiguration
+      await client.importConfiguration(config)
+      console.log(`✓ AOA config imported to ${ip} (${config.scenarios.length} scenarios)`)
     } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1) }
   })
