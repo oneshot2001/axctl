@@ -2,31 +2,41 @@
 
 ## Pre-built binaries
 
-Download the binary for your platform from the `dist/` directory and install it to your PATH.
+Download the binary for your platform from the [latest GitHub release](https://github.com/oneshot2001/aoa-cli/releases/latest).
 
 ### macOS (Apple Silicon)
 ```bash
-curl -L https://github.com/oneshot2001/aoa-cli/raw/day4-fleet/dist/axctl-macos-arm64.tar.gz | tar -xz
+curl -L https://github.com/oneshot2001/aoa-cli/releases/download/v0.1.0/axctl-macos-arm64.tar.gz | tar -xz
 sudo mv axctl-macos-arm64 /usr/local/bin/axctl
 ```
 
 ### macOS (Intel)
 ```bash
-curl -L https://github.com/oneshot2001/aoa-cli/raw/day4-fleet/dist/axctl-macos-x64.tar.gz | tar -xz
+curl -L https://github.com/oneshot2001/aoa-cli/releases/download/v0.1.0/axctl-macos-x64.tar.gz | tar -xz
 sudo mv axctl-macos-x64 /usr/local/bin/axctl
 ```
 
 ### Linux (x64)
 ```bash
-curl -L https://github.com/oneshot2001/aoa-cli/raw/day4-fleet/dist/axctl-linux-x64.tar.gz | tar -xz
+curl -L https://github.com/oneshot2001/aoa-cli/releases/download/v0.1.0/axctl-linux-x64.tar.gz | tar -xz
 sudo mv axctl-linux-x64 /usr/local/bin/axctl
 ```
 
 ### Linux (ARM64 — Raspberry Pi, Jetson, etc.)
 ```bash
-curl -L https://github.com/oneshot2001/aoa-cli/raw/day4-fleet/dist/axctl-linux-arm64.tar.gz | tar -xz
+curl -L https://github.com/oneshot2001/aoa-cli/releases/download/v0.1.0/axctl-linux-arm64.tar.gz | tar -xz
 sudo mv axctl-linux-arm64 /usr/local/bin/axctl
 ```
+
+### Windows (x64)
+```powershell
+# Download and extract
+Invoke-WebRequest -Uri https://github.com/oneshot2001/aoa-cli/releases/download/v0.1.0/axctl-windows-x64.zip -OutFile axctl.zip
+Expand-Archive axctl.zip -DestinationPath .
+Move-Item axctl-windows-x64.exe C:\Users\$env:USERNAME\AppData\Local\Microsoft\WindowsApps\axctl.exe
+```
+
+Or download `axctl-windows-x64.zip` from the [releases page](https://github.com/oneshot2001/aoa-cli/releases/latest), extract, and add to your PATH.
 
 ## Verify install
 ```bash
@@ -43,7 +53,7 @@ git clone https://github.com/oneshot2001/aoa-cli.git
 cd aoa-cli
 bun install
 bun run build          # → ./axctl (native binary)
-bun run build:all      # → dist/ (all platforms)
+bun run build:all      # → dist/ (all 5 platforms)
 ```
 
 ## Quick start

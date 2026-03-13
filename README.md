@@ -18,6 +18,7 @@ axctl fleet ping lab
 | macOS Intel | `curl -L .../axctl-macos-x64.tar.gz \| tar -xz && sudo mv axctl-macos-x64 /usr/local/bin/axctl` |
 | Linux x64 | `curl -L .../axctl-linux-x64.tar.gz \| tar -xz && sudo mv axctl-linux-x64 /usr/local/bin/axctl` |
 | Linux ARM64 | `curl -L .../axctl-linux-arm64.tar.gz \| tar -xz && sudo mv axctl-linux-arm64 /usr/local/bin/axctl` |
+| Windows x64 | Download `axctl-windows-x64.zip` from [releases](https://github.com/oneshot2001/aoa-cli/releases/latest), extract, add to PATH |
 
 See [INSTALL.md](INSTALL.md) for full instructions and SHA-256 checksums.
 
@@ -29,7 +30,7 @@ Requires [Bun](https://bun.sh) ≥ 1.1.
 git clone https://github.com/oneshot2001/aoa-cli.git && cd aoa-cli
 bun install
 bun run build        # native binary → ./axctl
-bun run build:all    # all 4 platforms → dist/
+bun run build:all    # all 5 platforms → dist/
 ```
 
 ---

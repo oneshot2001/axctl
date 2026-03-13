@@ -2,12 +2,12 @@
 
 ## Vault Memory
 At session start, read these files in order:
-1. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/context.md
-2. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/decisions.md
-3. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/patterns.md
-4. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/bugs.md
-5. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/architecture.md
-6. Last 3 files (by date) in ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/aoa-cli/dev-log/
+1. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/axctl/context.md
+2. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/axctl/decisions.md
+3. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/axctl/patterns.md
+4. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/axctl/bugs.md
+5. ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/axctl/architecture.md
+6. Last 3 files (by date) in ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/02-Projects/axctl/dev-log/
 7. All files in ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain/05-Knowledge/patterns/
 
 Vault root: ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Second Brain
@@ -20,10 +20,10 @@ During this session, track:
 4. Architecture changes (new commands, client changes, data flow changes)
 
 At session end, automatically write:
-- Session log to: [vault]/02-Projects/aoa-cli/dev-log/YYYY-MM-DD-session-N.md
-- Append new decisions to: [vault]/02-Projects/aoa-cli/decisions.md
-- Append new bugs to: [vault]/02-Projects/aoa-cli/bugs.md
-- Update if changed: [vault]/02-Projects/aoa-cli/architecture.md
+- Session log to: [vault]/02-Projects/axctl/dev-log/YYYY-MM-DD-session-N.md
+- Append new decisions to: [vault]/02-Projects/axctl/decisions.md
+- Append new bugs to: [vault]/02-Projects/axctl/bugs.md
+- Update if changed: [vault]/02-Projects/axctl/architecture.md
 
 ## Session Log Format
 
@@ -31,7 +31,7 @@ At session end, automatically write:
 ---
 date: YYYY-MM-DD
 session: N
-project: aoa-cli
+project: axctl
 tags: [dev-log]
 ---
 

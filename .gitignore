@@ -32,9 +32,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# compiled binaries (track tarballs + checksums only)
+# compiled binaries and release artifacts (uploaded to GitHub Releases, not tracked in git)
 axctl
-dist/axctl-macos-arm64
-dist/axctl-macos-x64
-dist/axctl-linux-arm64
-dist/axctl-linux-x64
+dist/

@@ -8,19 +8,19 @@
     "axctl": "src/index.ts"
   },
   "type": "module",
-  "private": true,
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build --compile src/index.ts --outfile axctl",
-    "build:all": "bun run build:macos-arm64 && bun run build:macos-x64 && bun run build:linux-arm64 && bun run build:linux-x64",
+    "build:all": "bun run build:macos-arm64 && bun run build:macos-x64 && bun run build:linux-arm64 && bun run build:linux-x64 && bun run build:windows-x64",
     "build:macos-arm64": "bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dist/axctl-macos-arm64",
     "build:macos-x64": "bun build --compile --target=bun-darwin-x64 src/index.ts --outfile dist/axctl-macos-x64",
     "build:linux-arm64": "bun build --compile --target=bun-linux-arm64 src/index.ts --outfile dist/axctl-linux-arm64",
     "build:linux-x64": "bun build --compile --target=bun-linux-x64 src/index.ts --outfile dist/axctl-linux-x64",
+    "build:windows-x64": "bun build --compile --target=bun-windows-x64 src/index.ts --outfile dist/axctl-windows-x64.exe",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
-    "release": "bun run build:all && cd dist && for f in axctl-*; do tar -czf \"$f.tar.gz\" \"$f\" && echo \"\u2713 $f.tar.gz\"; done",
-    "release:checksums": "cd dist && shasum -a 256 axctl-*.tar.gz > checksums.sha256 && cat checksums.sha256"
+    "release": "bun run build:all && cd dist && for f in axctl-*; do [[ \"$f\" == *.tar.gz ]] && continue; [[ \"$f\" == *.sha256 ]] && continue; [[ \"$f\" == *.zip ]] && continue; if [[ \"$f\" == *.exe ]]; then zip \"${f%.exe}.zip\" \"$f\" && echo \"✓ ${f%.exe}.zip\"; else tar -czf \"$f.tar.gz\" \"$f\" && echo \"✓ $f.tar.gz\"; fi; done",
+    "release:checksums": "cd dist && shasum -a 256 axctl-*.tar.gz axctl-*.zip 2>/dev/null > checksums.sha256 && cat checksums.sha256"
   },
   "devDependencies": {
     "@types/bun": "latest",
