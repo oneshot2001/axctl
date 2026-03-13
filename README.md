@@ -351,6 +351,10 @@ bun run build:all    # all 4 platform binaries → dist/
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and how to submit changes.
+
 ## License
 
 [MIT](LICENSE)
