@@ -1,0 +1,61 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "axctl",
+  "title": "Axis Camera Control",
+  "description": "Manage Axis cameras — discover, snapshot, info, streaming",
+  "icon": "extension-icon.png",
+  "author": "matthewvisher",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "list-cameras",
+      "title": "List Cameras",
+      "subtitle": "Axis Cameras",
+      "description": "List all known Axis cameras from the device registry",
+      "mode": "view"
+    },
+    {
+      "name": "discover",
+      "title": "Discover Cameras",
+      "subtitle": "Axis Cameras",
+      "description": "Scan the local network for Axis cameras",
+      "mode": "view"
+    },
+    {
+      "name": "snapshot",
+      "title": "Capture Snapshot",
+      "subtitle": "Axis Cameras",
+      "description": "Capture a JPEG snapshot from a camera",
+      "mode": "view"
+    },
+    {
+      "name": "camera-info",
+      "title": "Camera Info",
+      "subtitle": "Axis Cameras",
+      "description": "View detailed camera information",
+      "mode": "view"
+    },
+    {
+      "name": "open-stream",
+      "title": "Open Live Stream",
+      "subtitle": "Axis Cameras",
+      "description": "Open a camera's live video stream in the browser",
+      "mode": "no-view"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.86.0",
+    "better-sqlite3": "^11.8.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.11",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "lint": "ray lint"
+  }
+}

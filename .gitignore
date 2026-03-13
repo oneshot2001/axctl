@@ -26,6 +26,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cache
 *.tsbuildinfo
 
+# Swift build artifacts
+.build/
+.swiftpm/
+
 # IntelliJ based IDEs
 .idea
 
@@ -34,4 +38,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # compiled binaries and release artifacts (uploaded to GitHub Releases, not tracked in git)
 axctl
+axctl-av
 dist/
+
+# local storage (SQLite DB created at runtime)
+*.db
+*.db-wal
+*.db-shm
