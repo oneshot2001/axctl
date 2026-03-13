@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs'
+import { spawn } from 'child_process'
 import { program } from './root.js'
 import { credentialStore } from '../lib/credential-store.js'
 import { fleetStore } from '../lib/fleet-store.js'
@@ -8,6 +9,7 @@ import { fleetExec } from '../lib/fleet-ops.js'
 import { VapixClient } from '../lib/vapix-client.js'
 import { AoaClient } from '../lib/aoa-client.js'
 import { streamEvents, aoaTopics } from '../lib/event-stream.js'
+import { streamMqttEvents, mqttAoaTopics } from '../lib/mqtt-stream.js'
 
 const fleet = program
   .command('fleet')
@@ -170,6 +172,143 @@ fleet
     console.log(formatOutput(rows, fmt))
   })
 
+// ---- FLEET HEALTH CHECK ----------------------------------------------------
+
+fleet
+  .command('health <name>')
+  .description('check fleet health: connectivity, firmware, AOA status')
+  .option('-i, --interval <seconds>', 'repeat every N seconds (0 = once)', '0')
+  .option('--webhook <url>', 'POST health report as JSON to this URL')
+  .option('--min-firmware <version>', 'flag cameras below this firmware version')
+  .action(async (name: string, opts: { interval: string; webhook?: string; minFirmware?: string }) => {
+    const fmt = program.opts().format as string
+    const interval = parseInt(opts.interval) * 1000
+
+    const runCheck = async () => {
+      const results = await fleetExec(name, async (ip, user, pass) => {
+        const vapix = new VapixClient(ip, user, pass)
+        const start = Date.now()
+
+        let online = false
+        let info: Record<string, string> = {}
+        let aoaStatus = 'unknown'
+
+        try {
+          online = await vapix.ping()
+          if (online) {
+            info = await vapix.getDeviceInfo()
+            // Check AOA status
+            try {
+              const aoa = new AoaClient(ip, user, pass)
+              const scenarios = await aoa.getScenarios()
+              aoaStatus = `${scenarios.length} scenarios`
+            } catch {
+              aoaStatus = 'not available'
+            }
+          }
+        } catch {
+          online = false
+        }
+
+        return {
+          online,
+          ms: Date.now() - start,
+          model: info.ProdShortName ?? info.Model ?? '-',
+          firmware: info.Version ?? '-',
+          serial: info.ProdSerialNumber ?? '-',
+          aoaStatus,
+        }
+      })
+
+      // Build report rows
+      const rows = results.map((r) => {
+        if (r.error) {
+          return { ip: r.ip, status: '✗ error', ms: '-', model: '-', firmware: '-', aoa: '-', flags: r.error }
+        }
+        const d = r.result!
+        const flags: string[] = []
+
+        if (!d.online) flags.push('offline')
+
+        // Check firmware version
+        if (opts.minFirmware && d.firmware !== '-') {
+          const minParts = opts.minFirmware.split('.').map(Number)
+          const fwParts = d.firmware.split('.').map(Number)
+          let below = false
+          for (let i = 0; i < Math.max(minParts.length, fwParts.length); i++) {
+            const a = fwParts[i] ?? 0
+            const b = minParts[i] ?? 0
+            if (a < b) { below = true; break }
+            if (a > b) break
+          }
+          if (below) flags.push(`fw < ${opts.minFirmware}`)
+        }
+
+        return {
+          ip: r.ip,
+          status: d.online ? '✓ online' : '✗ offline',
+          ms: d.online ? d.ms : '-',
+          model: d.model,
+          firmware: d.firmware,
+          aoa: d.aoaStatus,
+          flags: flags.join(', ') || '-',
+        }
+      })
+
+      // Determine exit health
+      const offline = rows.filter((r) => r.status.includes('offline') || r.status.includes('error')).length
+      const total = rows.length
+
+      if (fmt === 'table' && interval > 0) {
+        const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
+        process.stderr.write(`\n─── Health check at ${now} ───\n`)
+      }
+
+      console.log(formatOutput(rows, fmt))
+
+      if (fmt === 'table') {
+        const healthy = total - offline
+        process.stderr.write(`\n${healthy}/${total} healthy`)
+        if (offline > 0) process.stderr.write(` (${offline} degraded)`)
+        process.stderr.write('\n')
+      }
+
+      // Webhook
+      if (opts.webhook) {
+        const report = { timestamp: new Date().toISOString(), fleet: name, total, healthy: total - offline, degraded: offline, devices: rows }
+        fetch(opts.webhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(report),
+        }).catch((err) => {
+          process.stderr.write(`Webhook error: ${(err as Error).message}\n`)
+        })
+      }
+
+      // Return exit code indicator
+      if (offline === total) return 2
+      if (offline > 0) return 1
+      return 0
+    }
+
+    if (interval > 0) {
+      // Continuous monitoring mode
+      process.stderr.write(`Monitoring fleet "${name}" every ${opts.interval}s (Ctrl+C to stop)...\n`)
+
+      const sigHandler = () => { process.exit(0) }
+      process.on('SIGINT', sigHandler)
+
+      while (true) {
+        await runCheck()
+        await new Promise((resolve) => setTimeout(resolve, interval))
+      }
+    } else {
+      // Single check
+      const code = await runCheck()
+      if (code > 0) process.exit(code)
+    }
+  })
+
 // ---- FLEET AOA SUBGROUP ----------------------------------------------------
 
 const fleetAoa = fleet
@@ -294,7 +433,9 @@ fleetEvents
   .option('-s, --scenario <ids>', 'comma-separated scenario IDs (default: all)')
   .option('-c, --count <n>', 'stop after N total events', '0')
   .option('--active-only', 'only show trigger-start events (active=true)', false)
-  .action(async (name: string, opts: { scenario?: string; count: string; activeOnly: boolean }) => {
+  .option('--webhook <url>', 'POST each event as JSON to this URL')
+  .option('--exec <command>', 'pipe each event as JSON to this shell command via stdin')
+  .action(async (name: string, opts: { scenario?: string; count: string; activeOnly: boolean; webhook?: string; exec?: string }) => {
     const f = fleetStore.get(name)
     if (!f) { console.error(`Fleet "${name}" not found`); process.exit(1) }
 
@@ -367,6 +508,28 @@ fleetEvents
             )
           }
 
+          // Webhook: POST event as JSON
+          if (opts.webhook) {
+            fetch(opts.webhook, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ip: t.ip, ...event }),
+            }).catch((err) => {
+              process.stderr.write(`Webhook error: ${(err as Error).message}\n`)
+            })
+          }
+
+          // Exec: pipe event JSON to shell command
+          if (opts.exec) {
+            try {
+              const child = spawn('sh', ['-c', opts.exec], { stdio: ['pipe', 'inherit', 'inherit'] })
+              child.stdin.write(JSON.stringify({ ip: t.ip, ...event }) + '\n')
+              child.stdin.end()
+            } catch (err) {
+              process.stderr.write(`Exec error: ${(err as Error).message}\n`)
+            }
+          }
+
           if (maxCount > 0 && received >= maxCount) {
             process.stderr.write(`\nReceived ${received} events. Done.\n`)
             ac.abort()
@@ -374,6 +537,107 @@ fleetEvents
         },
         onError: (err) => {
           process.stderr.write(`[${t.ip}] Stream error: ${err.message}\n`)
+        },
+      })
+    )
+
+    try {
+      await Promise.allSettled(streams)
+    } catch {
+      // streams resolved via allSettled, nothing to catch
+    }
+
+    if (fmt === 'table') {
+      process.stderr.write(`\nTotal events: ${received}\n`)
+    }
+  })
+
+fleetEvents
+  .command('mqtt <name>')
+  .description('stream AOA events via MQTT from all cameras in a fleet (AXIS OS 12.2+)')
+  .option('-s, --scenario <ids>', 'comma-separated scenario IDs (default: all)')
+  .option('-c, --count <n>', 'stop after N total events', '0')
+  .option('--active-only', 'only show trigger-start events (active=true)', false)
+  .action(async (name: string, opts: { scenario?: string; count: string; activeOnly: boolean }) => {
+    const f = fleetStore.get(name)
+    if (!f) { console.error(`Fleet "${name}" not found`); process.exit(1) }
+
+    const fmt = program.opts().format as string
+    const maxCount = parseInt(opts.count)
+    let received = 0
+
+    const topicFilters = opts.scenario
+      ? mqttAoaTopics(opts.scenario.split(',').map((s) => parseInt(s.trim())))
+      : undefined // default = all ObjectAnalytics
+
+    const ac = new AbortController()
+
+    // Handle Ctrl+C
+    process.on('SIGINT', () => {
+      process.stderr.write('\nStopping MQTT streams...\n')
+      ac.abort()
+    })
+
+    // Resolve credentials for each camera
+    const targets: { ip: string; username: string; password: string }[] = []
+    for (const ip of f.ips) {
+      const cred = credentialStore.get(ip)
+      if (!cred) {
+        process.stderr.write(`⚠ No credentials for ${ip} — skipping (run: axctl auth add ${ip})\n`)
+        continue
+      }
+      targets.push({ ip, username: cred.username, password: cred.password })
+    }
+
+    if (targets.length === 0) {
+      console.error('No cameras with credentials. Run: axctl auth add <ip>')
+      process.exit(1)
+    }
+
+    if (fmt === 'table') {
+      process.stderr.write(`Streaming MQTT events from ${targets.length} camera${targets.length === 1 ? '' : 's'} in fleet "${name}" (Ctrl+C to stop)...\n\n`)
+      process.stderr.write('IP               TIME                       SCENARIO  TYPE          OBJECT  CLASS     ACTIVE\n')
+      process.stderr.write('─'.repeat(95) + '\n')
+    }
+
+    let csvHeaderPrinted = false
+
+    const streams = targets.map((t) =>
+      streamMqttEvents(t.ip, t.username, t.password, {
+        topicFilters,
+        signal: ac.signal,
+        onEvent: (event) => {
+          if (opts.activeOnly && !event.active) return
+          if (ac.signal.aborted) return
+
+          received++
+
+          if (fmt === 'json') {
+            console.log(JSON.stringify({ ip: t.ip, ...event }, null, 2))
+          } else if (fmt === 'jsonl') {
+            console.log(JSON.stringify({ ip: t.ip, ...event }))
+          } else if (fmt === 'csv') {
+            if (!csvHeaderPrinted) {
+              console.log('ip,timestamp,triggerTime,scenarioId,scenarioType,objectId,classTypes,active')
+              csvHeaderPrinted = true
+            }
+            console.log(`${t.ip},${event.timestamp},${event.triggerTime},${event.scenarioId},${event.scenarioType},${event.objectId},${event.classTypes},${event.active}`)
+          } else {
+            // table: rolling output with ip column
+            const time = new Date(event.timestamp).toISOString().replace('T', ' ').substring(0, 23)
+            const active = event.active ? '▶ yes' : '◼ no '
+            console.log(
+              `${t.ip.padEnd(15)}  ${time}  ${String(event.scenarioId).padEnd(8)}  ${event.scenarioType.padEnd(12)}  ${event.objectId.padEnd(6)}  ${event.classTypes.padEnd(8)}  ${active}`
+            )
+          }
+
+          if (maxCount > 0 && received >= maxCount) {
+            process.stderr.write(`\nReceived ${received} events. Done.\n`)
+            ac.abort()
+          }
+        },
+        onError: (err) => {
+          process.stderr.write(`[${t.ip}] MQTT error: ${err.message}\n`)
         },
       })
     )
