@@ -2,7 +2,8 @@ import { Command } from 'commander'
 
 function generateBashCompletions(name: string): string {
   const commands = [
-    'auth', 'devices', 'discover', 'fleet', 'aoa', 'apps', 'events', 'profile', 'recording', 'completions', 'help'
+    'auth', 'devices', 'discover', 'fleet', 'aoa', 'apps', 'events', 'profile',
+    'recording', 'ptz', 'firmware', 'system', 'rules', 'config', 'interactive', 'completions', 'help'
   ]
   const authSubs = ['add', 'list', 'remove']
   const devicesSubs = ['info', 'ping', 'list']
@@ -12,6 +13,11 @@ function generateBashCompletions(name: string): string {
   const eventsSubs = ['stream', 'mqtt']
   const profileSubs = ['create', 'list', 'show', 'use', 'delete', 'update']
   const recordingSubs = ['list', 'start', 'stop', 'export']
+  const ptzSubs = ['goto', 'move', 'home', 'stop', 'position', 'preset']
+  const firmwareSubs = ['check', 'upgrade']
+  const systemSubs = ['info', 'time', 'network', 'users']
+  const rulesSubs = ['list', 'enable', 'disable', 'remove', 'templates']
+  const configSubs = ['get', 'set', 'unset', 'list', 'keys']
   const globalOpts = ['-f', '--format', '-v', '--verbose', '--debug', '--dry-run', '-h', '--help', '-V', '--version']
   const formats = ['table', 'json', 'jsonl', 'csv', 'yaml']
 
@@ -32,6 +38,11 @@ _${name}() {
     events) COMPREPLY=($(compgen -W "${eventsSubs.join(' ')}" -- "$cur")) ;;
     profile) COMPREPLY=($(compgen -W "${profileSubs.join(' ')}" -- "$cur")) ;;
     recording) COMPREPLY=($(compgen -W "${recordingSubs.join(' ')}" -- "$cur")) ;;
+    ptz) COMPREPLY=($(compgen -W "${ptzSubs.join(' ')}" -- "$cur")) ;;
+    firmware) COMPREPLY=($(compgen -W "${firmwareSubs.join(' ')}" -- "$cur")) ;;
+    system) COMPREPLY=($(compgen -W "${systemSubs.join(' ')}" -- "$cur")) ;;
+    rules) COMPREPLY=($(compgen -W "${rulesSubs.join(' ')}" -- "$cur")) ;;
+    config) COMPREPLY=($(compgen -W "${configSubs.join(' ')}" -- "$cur")) ;;
     *)
       if [[ "$cur" == -* ]]; then
         COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
@@ -64,6 +75,12 @@ _${name}() {
     'events:stream real-time analytics events'
     'profile:manage named site profiles'
     'recording:video recording control'
+    'ptz:pan/tilt/zoom control'
+    'firmware:firmware management'
+    'system:system and network info'
+    'rules:action rule management'
+    'config:manage axctl configuration'
+    'interactive:start interactive REPL'
     'completions:generate shell completions'
     'help:display help'
   )
@@ -96,6 +113,11 @@ _${name}() {
         events) _values 'subcommand' 'stream[WebSocket streaming]' 'mqtt[MQTT streaming]' ;;
         profile) _values 'subcommand' 'create[create profile]' 'list[list profiles]' 'show[show profile]' 'use[activate profile]' 'delete[remove profile]' 'update[update profile]' ;;
         recording) _values 'subcommand' 'list[list recordings]' 'start[trigger recording]' 'stop[stop recording]' 'export[download recording]' ;;
+        ptz) _values 'subcommand' 'goto[absolute move]' 'move[relative move]' 'home[go to home]' 'stop[stop movement]' 'position[current position]' 'preset[preset management]' ;;
+        firmware) _values 'subcommand' 'check[check firmware version]' 'upgrade[upload firmware]' ;;
+        system) _values 'subcommand' 'info[device info]' 'time[date/time/NTP]' 'network[network config]' 'users[user list]' ;;
+        rules) _values 'subcommand' 'list[list rules]' 'enable[enable rule]' 'disable[disable rule]' 'remove[delete rule]' 'templates[action templates]' ;;
+        config) _values 'subcommand' 'get[get value]' 'set[set value]' 'unset[remove value]' 'list[list all values]' 'keys[list known keys]' ;;
         completions) _values 'shell' 'bash' 'zsh' 'fish' ;;
       esac
       ;;
@@ -129,6 +151,12 @@ function generateFishCompletions(name: string): string {
     `complete -c ${name} -n '__fish_use_subcommand' -a events -d 'Event streaming'`,
     `complete -c ${name} -n '__fish_use_subcommand' -a profile -d 'Site profiles'`,
     `complete -c ${name} -n '__fish_use_subcommand' -a recording -d 'Video recording'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a ptz -d 'PTZ control'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a firmware -d 'Firmware management'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a system -d 'System info'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a rules -d 'Action rules'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a config -d 'Configuration'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a interactive -d 'Interactive REPL'`,
     `complete -c ${name} -n '__fish_use_subcommand' -a completions -d 'Shell completions'`,
     ``,
     `# auth subcommands`,
@@ -189,6 +217,38 @@ function generateFishCompletions(name: string): string {
     `complete -c ${name} -n '__fish_seen_subcommand_from recording' -a stop -d 'Stop recording'`,
     `complete -c ${name} -n '__fish_seen_subcommand_from recording' -a export -d 'Download recording'`,
     ``,
+    `# ptz subcommands`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from ptz' -a goto -d 'Absolute move'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from ptz' -a move -d 'Relative move'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from ptz' -a home -d 'Go to home'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from ptz' -a stop -d 'Stop movement'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from ptz' -a position -d 'Current position'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from ptz' -a preset -d 'Preset management'`,
+    ``,
+    `# firmware subcommands`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from firmware' -a check -d 'Check version'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from firmware' -a upgrade -d 'Upload firmware'`,
+    ``,
+    `# system subcommands`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from system' -a info -d 'Device info'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from system' -a time -d 'Date/time/NTP'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from system' -a network -d 'Network config'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from system' -a users -d 'User list'`,
+    ``,
+    `# rules subcommands`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from rules' -a list -d 'List rules'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from rules' -a enable -d 'Enable rule'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from rules' -a disable -d 'Disable rule'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from rules' -a remove -d 'Delete rule'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from rules' -a templates -d 'Action templates'`,
+    ``,
+    `# config subcommands`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from config' -a get -d 'Get value'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from config' -a set -d 'Set value'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from config' -a unset -d 'Remove value'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from config' -a list -d 'List all values'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from config' -a keys -d 'List known keys'`,
+    ``,
     `# completions subcommands`,
     `complete -c ${name} -n '__fish_seen_subcommand_from completions' -a 'bash zsh fish' -d 'Shell type'`,
   ]
@@ -200,7 +260,7 @@ export const program = new Command()
 program
   .name('axctl')
   .description('Axis camera analytics CLI — configure AOA, stream events, discover devices')
-  .version('0.1.0')
+  .version('0.2.0')
   .option('-f, --format <format>', 'output format (table|json|jsonl|csv|yaml)', 'table')
   .option('-v, --verbose', 'verbose output')
   .option('--debug', 'debug logging (show raw requests/responses)')

@@ -252,6 +252,11 @@ export const configRegistry = {
     const result = db.run('DELETE FROM config WHERE key = ?', [key])
     return result.changes > 0
   },
+
+  list(): { key: string; value: string }[] {
+    const db = getDb()
+    return db.query('SELECT key, value FROM config ORDER BY key').all() as { key: string; value: string }[]
+  },
 }
 
 /** Get the database path (useful for Raycast/Swift consumers) */
