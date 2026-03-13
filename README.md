@@ -14,10 +14,10 @@ axctl fleet ping lab
 
 | Platform | Command |
 |----------|---------|
-| macOS Apple Silicon | `curl -L .../axctl-macos-arm64.tar.gz \| tar -xz && sudo mv axctl-macos-arm64 /usr/local/bin/axctl` |
-| macOS Intel | `curl -L .../axctl-macos-x64.tar.gz \| tar -xz && sudo mv axctl-macos-x64 /usr/local/bin/axctl` |
-| Linux x64 | `curl -L .../axctl-linux-x64.tar.gz \| tar -xz && sudo mv axctl-linux-x64 /usr/local/bin/axctl` |
-| Linux ARM64 | `curl -L .../axctl-linux-arm64.tar.gz \| tar -xz && sudo mv axctl-linux-arm64 /usr/local/bin/axctl` |
+| macOS Apple Silicon | `curl -L https://github.com/oneshot2001/axctl/releases/latest/download/axctl-macos-arm64.tar.gz \| tar -xz && sudo mv axctl-macos-arm64 /usr/local/bin/axctl` |
+| macOS Intel | `curl -L https://github.com/oneshot2001/axctl/releases/latest/download/axctl-macos-x64.tar.gz \| tar -xz && sudo mv axctl-macos-x64 /usr/local/bin/axctl` |
+| Linux x64 | `curl -L https://github.com/oneshot2001/axctl/releases/latest/download/axctl-linux-x64.tar.gz \| tar -xz && sudo mv axctl-linux-x64 /usr/local/bin/axctl` |
+| Linux ARM64 | `curl -L https://github.com/oneshot2001/axctl/releases/latest/download/axctl-linux-arm64.tar.gz \| tar -xz && sudo mv axctl-linux-arm64 /usr/local/bin/axctl` |
 | Windows x64 | Download `axctl-windows-x64.zip` from [releases](https://github.com/oneshot2001/axctl/releases/latest), extract, add to PATH |
 
 See [INSTALL.md](INSTALL.md) for full instructions and SHA-256 checksums.
