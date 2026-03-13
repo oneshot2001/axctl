@@ -3,6 +3,7 @@ import { program } from './root.js'
 import { streamEvents, aoaTopics } from 'axctl-core'
 import { streamMqttEvents, mqttAoaTopics } from 'axctl-core'
 import { credentialStore } from 'axctl-core'
+import { postWebhook } from 'axctl-core'
 
 const events = program
   .command('events')
@@ -72,14 +73,10 @@ events
             )
           }
 
-          // Webhook: POST event as JSON
+          // Webhook: POST event as JSON (with retry)
           if (opts.webhook) {
-            fetch(opts.webhook, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(event),
-            }).catch((err) => {
-              process.stderr.write(`Webhook error: ${(err as Error).message}\n`)
+            postWebhook(opts.webhook, event, {
+              onFailure: (url, err) => process.stderr.write(`Webhook failed after retries: ${err.message}\n`),
             })
           }
 

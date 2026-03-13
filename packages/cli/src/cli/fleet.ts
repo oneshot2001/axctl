@@ -10,6 +10,7 @@ import { VapixClient } from 'axctl-core'
 import { AoaClient, type AoaConfiguration } from 'axctl-core'
 import { streamEvents, aoaTopics } from 'axctl-core'
 import { streamMqttEvents, mqttAoaTopics } from 'axctl-core'
+import { postWebhook } from 'axctl-core'
 
 const fleet = program
   .command('fleet')
@@ -293,12 +294,8 @@ fleet
           console.log(`[dry-run] Would POST health report to ${opts.webhook}`)
         } else {
           const report = { timestamp: new Date().toISOString(), fleet: name, total, healthy: total - offline, degraded: offline, devices: rows }
-          fetch(opts.webhook, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(report),
-          }).catch((err) => {
-            process.stderr.write(`Webhook error: ${(err as Error).message}\n`)
+          postWebhook(opts.webhook, report, {
+            onFailure: (url, err) => process.stderr.write(`Health webhook failed after retries: ${err.message}\n`),
           })
         }
       }
@@ -544,14 +541,10 @@ fleetEvents
             )
           }
 
-          // Webhook: POST event as JSON
+          // Webhook: POST event as JSON (with retry)
           if (opts.webhook) {
-            fetch(opts.webhook, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ip: t.ip, ...event }),
-            }).catch((err) => {
-              process.stderr.write(`Webhook error: ${(err as Error).message}\n`)
+            postWebhook(opts.webhook, { ip: t.ip, ...event }, {
+              onFailure: (url, err) => process.stderr.write(`[${t.ip}] Webhook failed after retries: ${err.message}\n`),
             })
           }
 

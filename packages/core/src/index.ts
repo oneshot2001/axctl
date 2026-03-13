@@ -16,6 +16,10 @@ export { digestFetch, buildDigestHeader } from './lib/digest-auth.js'
 // --- Errors ---
 export { ConnectionError, AuthenticationError, VapixApiError, FirmwareRequiredError, TimeoutError } from './lib/errors.js'
 
+// --- Webhook ---
+export { postWebhook } from './lib/webhook.js'
+export type { WebhookOptions } from './lib/webhook.js'
+
 // --- Analytics (AOA) ---
 export { AoaClient } from './lib/aoa-client.js'
 export type {
