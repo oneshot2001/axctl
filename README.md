@@ -348,3 +348,13 @@ bun run build:all    # all 4 platform binaries → dist/
 - AXIS Object Analytics installed (for `aoa` and `events` commands)
 - Cameras reachable on the local network (HTTP, port 80)
 - Credentials with at least Viewer access (Operator recommended for write operations)
+
+---
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+Created by Matthew at [AlphaVision](https://alphavision.io)
