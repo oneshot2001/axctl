@@ -16,6 +16,9 @@ import {
   credentialStore,
   fleetExec,
   deviceRegistry,
+  ApiDiscoveryClient,
+  ParamsClient,
+  StreamClient,
 } from 'axctl-core'
 
 const server = new McpServer({
@@ -267,6 +270,159 @@ server.tool(
         type: 'text' as const,
         text: JSON.stringify({ ip, reachable }, null, 2),
       }],
+    }
+  }
+)
+
+// --- V1.5 Tools ---
+
+server.tool(
+  'axis_api_discovery',
+  'List all VAPIX APIs supported by a camera, or check if a specific API is available',
+  {
+    ip: z.string().describe('Camera IP address'),
+    check_api: z.string().optional().describe('Specific API ID to check (e.g. "ptz-control")'),
+  },
+  async ({ ip, check_api }) => {
+    const auth = getAuth(ip)
+    const client = new ApiDiscoveryClient(ip, auth.username, auth.password)
+    if (check_api) {
+      const version = await client.getApiVersion(check_api)
+      return {
+        content: [{
+          type: 'text' as const,
+          text: version
+            ? JSON.stringify({ api: check_api, supported: true, version }, null, 2)
+            : JSON.stringify({ api: check_api, supported: false }, null, 2),
+        }],
+      }
+    }
+    const apis = await client.getApis()
+    return { content: [{ type: 'text' as const, text: JSON.stringify(apis, null, 2) }] }
+  }
+)
+
+server.tool(
+  'axis_params_export',
+  'Export all configurable parameters from a camera as structured data',
+  {
+    ip: z.string().describe('Camera IP address'),
+    group: z.string().optional().describe('Limit to a parameter group (e.g. "root.Image")'),
+  },
+  async ({ ip, group }) => {
+    const auth = getAuth(ip)
+    const client = new ParamsClient(ip, auth.username, auth.password)
+    if (group) {
+      const params = await client.list(group)
+      return { content: [{ type: 'text' as const, text: JSON.stringify(params, null, 2) }] }
+    }
+    const vapix = new VapixClient(ip, auth.username, auth.password)
+    const info = await vapix.getDeviceInfo()
+    const exported = await client.exportAll({
+      model: info.ProdFullName ?? info.Model ?? 'unknown',
+      firmware: info.Version ?? 'unknown',
+      serial: (info as Record<string, string>).SerialNumber ?? info.ProdSerialNumber ?? 'unknown',
+      ip,
+    })
+    return { content: [{ type: 'text' as const, text: JSON.stringify(exported, null, 2) }] }
+  }
+)
+
+server.tool(
+  'axis_params_set',
+  'Set a device parameter value',
+  {
+    ip: z.string().describe('Camera IP address'),
+    param: z.string().describe('Full parameter path (e.g. "root.Image.I0.Appearance.Resolution")'),
+    value: z.string().describe('New value'),
+  },
+  async ({ ip, param, value }) => {
+    const auth = getAuth(ip)
+    const client = new ParamsClient(ip, auth.username, auth.password)
+    const success = await client.set(param, value)
+    return {
+      content: [{
+        type: 'text' as const,
+        text: success ? `Set ${param}=${value}` : `Failed to set ${param}`,
+      }],
+    }
+  }
+)
+
+server.tool(
+  'axis_apps_install',
+  'Install an ACAP application (.eap file) on a camera',
+  {
+    ip: z.string().describe('Camera IP address'),
+    eap_path: z.string().describe('Absolute path to .eap file on disk'),
+  },
+  async ({ ip, eap_path }) => {
+    const auth = getAuth(ip)
+    const { readFileSync } = await import('fs')
+    const eapData = readFileSync(eap_path)
+    const filename = eap_path.split('/').pop() ?? eap_path
+    const result = await appsClient.install(ip, auth.username, auth.password, eapData, filename)
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `Installed ${filename} on ${ip}: ${result}`,
+      }],
+    }
+  }
+)
+
+server.tool(
+  'axis_apps_remove',
+  'Remove (uninstall) an ACAP application from a camera',
+  {
+    ip: z.string().describe('Camera IP address'),
+    package_name: z.string().describe('ACAP package name (e.g. "objectanalytics")'),
+  },
+  async ({ ip, package_name }) => {
+    const auth = getAuth(ip)
+    try { await appsClient.stop(ip, auth.username, auth.password, package_name) } catch { /* may already be stopped */ }
+    await new Promise(r => setTimeout(r, 2000))
+    await appsClient.remove(ip, auth.username, auth.password, package_name)
+    return { content: [{ type: 'text' as const, text: `Removed ${package_name} from ${ip}` }] }
+  }
+)
+
+server.tool(
+  'axis_stream_profiles',
+  'List video stream profiles configured on a camera',
+  { ip: z.string().describe('Camera IP address') },
+  async ({ ip }) => {
+    const auth = getAuth(ip)
+    const client = new StreamClient(ip, auth.username, auth.password)
+    const profiles = await client.listProfiles()
+    return { content: [{ type: 'text' as const, text: JSON.stringify(profiles, null, 2) }] }
+  }
+)
+
+server.tool(
+  'axis_ptz_presets',
+  'List, create, or remove PTZ presets on a camera',
+  {
+    ip: z.string().describe('Camera IP address'),
+    action: z.enum(['list', 'create', 'remove']).describe('Preset action'),
+    name: z.string().optional().describe('Preset name (required for create/remove)'),
+  },
+  async ({ ip, action, name }) => {
+    const auth = getAuth(ip)
+    const client = new PtzClient(ip, auth.username, auth.password)
+    switch (action) {
+      case 'list': {
+        const presets = await client.listPresets()
+        return { content: [{ type: 'text' as const, text: JSON.stringify(presets, null, 2) }] }
+      }
+      case 'create':
+        if (!name) throw new Error('name required for create')
+        await client.createPreset(name)
+        return { content: [{ type: 'text' as const, text: `Created preset "${name}" at current position` }] }
+      case 'remove':
+        if (!name) throw new Error('name required for remove')
+        await client.removePreset(name)
+        return { content: [{ type: 'text' as const, text: `Removed preset "${name}"` }] }
     }
   }
 )

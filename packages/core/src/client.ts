@@ -9,6 +9,9 @@ import { SystemClient } from './lib/system-client.js'
 import { RulesClient } from './lib/rules-client.js'
 import { appsClient } from './lib/apps-client.js'
 import type { AcapApp } from './lib/apps-client.js'
+import { ApiDiscoveryClient } from './lib/api-discovery.js'
+import { ParamsClient } from './lib/params-client.js'
+import { StreamClient } from './lib/stream-client.js'
 
 /**
  * High-level convenience client that wraps all Axis VAPIX domain clients
@@ -39,6 +42,12 @@ export class AxctlClient {
   readonly system: SystemClient
   /** Action rules engine client */
   readonly rules: RulesClient
+  /** API Discovery client — query supported VAPIX APIs */
+  readonly apiDiscovery: ApiDiscoveryClient
+  /** Parameter management client — get/set/export/diff */
+  readonly params: ParamsClient
+  /** Stream profile and Zipstream client */
+  readonly stream: StreamClient
 
   constructor(
     readonly host: string,
@@ -53,6 +62,9 @@ export class AxctlClient {
     this.firmware = new FirmwareClient(host, username, password)
     this.system = new SystemClient(host, username, password)
     this.rules = new RulesClient(host, username, password)
+    this.apiDiscovery = new ApiDiscoveryClient(host, username, password)
+    this.params = new ParamsClient(host, username, password)
+    this.stream = new StreamClient(host, username, password)
   }
 
   // --- Convenience methods (delegate to domain clients) ---
@@ -85,5 +97,20 @@ export class AxctlClient {
   /** Stop an ACAP application by package name */
   async stopApp(packageName: string): Promise<void> {
     return appsClient.stop(this.host, this.username, this.password, packageName)
+  }
+
+  /** Install an ACAP application from .eap file */
+  async installApp(eapData: Buffer, filename: string): Promise<string> {
+    return appsClient.install(this.host, this.username, this.password, eapData, filename)
+  }
+
+  /** Remove an ACAP application */
+  async removeApp(packageName: string): Promise<void> {
+    return appsClient.remove(this.host, this.username, this.password, packageName)
+  }
+
+  /** Capture a JPEG snapshot */
+  async captureSnapshot(opts?: { resolution?: string; compression?: number }): Promise<Buffer> {
+    return this.stream.captureSnapshot(opts)
   }
 }
