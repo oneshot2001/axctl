@@ -71,9 +71,15 @@ export const appsClient = {
   },
 
   async stop(host: string, username: string, password: string, packageName: string): Promise<void> {
-    const r = await formFetch(host, '/axis-cgi/applications/control.cgi', username, password,
-      `action=stop&package=${encodeURIComponent(packageName)}`)
-    if (r.status !== 200) throw new Error(`Stop failed: ${r.status}`)
+    try {
+      const r = await formFetch(host, '/axis-cgi/applications/control.cgi', username, password,
+        `action=stop&package=${encodeURIComponent(packageName)}`)
+      if (r.status !== 200) throw new Error(`Stop failed: ${r.status}`)
+    } catch (err) {
+      // Camera may reset the connection when stopping apps — treat ECONNRESET as success
+      if (err instanceof Error && err.message.includes('ECONNRESET')) return
+      throw err
+    }
   },
 
   async install(host: string, username: string, password: string, eapData: Buffer, filename: string): Promise<string> {
@@ -83,9 +89,16 @@ export const appsClient = {
   },
 
   async remove(host: string, username: string, password: string, packageName: string): Promise<void> {
-    const r = await formFetch(host, '/axis-cgi/applications/control.cgi', username, password,
-      `action=remove&package=${encodeURIComponent(packageName)}`)
-    if (r.status !== 200) throw new Error(`Remove failed: ${r.status}`)
+    try {
+      // VAPIX control.cgi remove works via GET on AXIS OS 12.x
+      const url = `http://${host}/axis-cgi/applications/control.cgi?action=remove&package=${encodeURIComponent(packageName)}`
+      const r = await digestFetch(url, 'GET', username, password)
+      if (!r.ok) throw new Error(`Remove failed: ${r.status}`)
+    } catch (err) {
+      // Camera may reset connection on remove — treat as success
+      if (err instanceof Error && (err.message.includes('ECONNRESET') || err.message.includes('socket connection was closed'))) return
+      throw err
+    }
   },
 
   async restart(host: string, username: string, password: string, packageName: string): Promise<void> {
