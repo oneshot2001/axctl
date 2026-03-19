@@ -5,6 +5,7 @@ import { FirmwareClient } from 'axctl-core'
 import { credentialStore } from 'axctl-core'
 import { formatOutput } from 'axctl-core'
 import { fleetExec } from 'axctl-core'
+import { FleetRunner, summarizeFleetResults } from 'axctl-core'
 
 const firmware = program
   .command('firmware')
@@ -150,6 +151,93 @@ firmware
       if (flagged > 0) process.stderr.write(` — ${flagged} flagged`)
       if (errors > 0) process.stderr.write(` — ${errors} error${errors === 1 ? '' : 's'}`)
       process.stderr.write('\n')
+    }
+  })
+
+// axctl firmware upgrade-fleet <fleet> --file <path>
+firmware
+  .command('upgrade-fleet <fleet>')
+  .description('rolling firmware upgrade across a fleet')
+  .requiredOption('--file <path>', 'path to firmware .bin file')
+  .option('--batch-size <n>', 'devices per batch', '3')
+  .option('--health-timeout <seconds>', 'max wait for device reboot', '300')
+  .option('-y, --yes', 'skip confirmation prompt')
+  .action(async (fleetName: string, opts: { file: string; batchSize: string; healthTimeout: string; yes?: boolean }) => {
+    if (!existsSync(opts.file)) {
+      console.error(`File not found: ${opts.file}`)
+      process.exit(1)
+    }
+
+    const fileSize = FirmwareClient.fileSize(opts.file)
+    const sizeMB = (fileSize / (1024 * 1024)).toFixed(1)
+    const filename = opts.file.split('/').pop() ?? opts.file
+    const batchSize = parseInt(opts.batchSize, 10)
+    const healthTimeout = parseInt(opts.healthTimeout, 10) * 1000
+    const fmt = program.opts().format as string
+
+    const runner = new FleetRunner({ fleet: fleetName, verbose: true })
+    const devices = runner.resolveDevices()
+
+    if (program.opts().dryRun) {
+      console.log(`[dry-run] Would upgrade ${devices.length} devices in fleet "${fleetName}"`)
+      console.log(`  File:       ${filename} (${sizeMB} MB)`)
+      console.log(`  Strategy:   rolling (batch size ${batchSize})`)
+      console.log(`  Devices:    ${devices.join(', ')}`)
+      return
+    }
+
+    if (!opts.yes) {
+      process.stderr.write(`\nFleet firmware upgrade:\n`)
+      process.stderr.write(`  Fleet:      ${fleetName} (${devices.length} devices)\n`)
+      process.stderr.write(`  File:       ${filename} (${sizeMB} MB)\n`)
+      process.stderr.write(`  Strategy:   rolling (batch size ${batchSize})\n`)
+      process.stderr.write(`  Health:     wait up to ${opts.healthTimeout}s per batch\n`)
+      process.stderr.write(`\n⚠ Devices will reboot during upgrade.\n`)
+      const confirmed = await promptConfirm('Proceed? (y/N) ')
+      if (!confirmed) { console.log('Aborted.'); return }
+    }
+
+    try {
+      const results = await runner.runBatched(
+        async (_client, ip) => {
+          const cred = credentialStore.get(ip)
+          if (!cred) throw new Error(`No credentials — run: axctl auth add ${ip}`)
+          const fw = new FirmwareClient(ip, cred.username, cred.password)
+          const before = await fw.getStatus()
+          await fw.upgrade(opts.file)
+          process.stderr.write(`  ⏳ ${ip}: uploaded, waiting for reboot...\n`)
+          const ready = await fw.waitForReady(healthTimeout)
+          if (!ready) throw new Error('Device did not come back online')
+          const after = await fw.getStatus()
+          return { before: before.firmwareVersion, after: after.firmwareVersion }
+        },
+        batchSize,
+        async (batchIndex, batchResults) => {
+          const failed = batchResults.filter(r => !r.success)
+          if (failed.length > 0) {
+            process.stderr.write(`\n⚠ Batch ${batchIndex + 1} had ${failed.length} failure(s)\n`)
+            for (const f of failed) process.stderr.write(`  ✗ ${f.ip}: ${f.error}\n`)
+            return false // Abort remaining batches
+          }
+          return true // Continue to next batch
+        }
+      )
+
+      const rows = results.map(r => ({
+        ip: r.ip,
+        status: r.success ? 'upgraded' : 'failed',
+        before: r.data?.before ?? '-',
+        after: r.data?.after ?? '-',
+        error: r.error ?? '',
+        duration: `${Math.round(r.duration / 1000)}s`,
+      }))
+      console.log(formatOutput(rows, fmt))
+
+      const s = summarizeFleetResults(results)
+      process.stderr.write(`\n${s.succeeded}/${s.total} upgraded successfully (${Math.round(s.totalDuration / 1000)}s)\n`)
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e)
+      process.exit(1)
     }
   })
 

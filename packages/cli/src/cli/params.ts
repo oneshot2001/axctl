@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { program } from './root.js'
 import { VapixClient } from 'axctl-core'
 import { ParamsClient } from 'axctl-core'
 import { credentialStore } from 'axctl-core'
 import { formatOutput } from 'axctl-core'
+import { FleetRunner, summarizeFleetResults } from 'axctl-core'
 import yaml from 'js-yaml'
 const { load: parseYaml, dump: stringifyYaml } = yaml
 
@@ -80,54 +81,126 @@ params
     }
   })
 
-// axctl params export <ip> --output <path>
+// axctl params export [ip] --output <path> [--fleet <name>]
 params
-  .command('export <ip>')
+  .command('export [ip]')
   .description('export all device parameters to YAML')
-  .requiredOption('--output <path>', 'output file path')
-  .action(async (ip: string, opts: { output: string }) => {
-    const cred = credentialStore.get(ip)
-    if (!cred) { console.error(`No credentials for ${ip}. Run: axctl auth add ${ip}`); process.exit(1) }
+  .requiredOption('--output <path>', 'output file path (or directory for fleet)')
+  .option('--fleet <name>', 'target fleet (exports one file per device)')
+  .action(async (ip: string | undefined, opts: { output: string; fleet?: string }) => {
+    if (!ip && !opts.fleet) { console.error('Specify device IP or --fleet <name>'); process.exit(1) }
+
     try {
-      const vapix = new VapixClient(ip, cred.username, cred.password)
-      const info = await vapix.getDeviceInfo()
-      const client = new ParamsClient(ip, cred.username, cred.password)
-      const exported = await client.exportAll({
-        model: info.Model ?? 'unknown',
-        firmware: info.Version ?? 'unknown',
-        serial: info.ProdSerialNumber ?? 'unknown',
-        ip,
-      })
-      writeFileSync(opts.output, stringifyYaml(exported, { lineWidth: 120 }))
-      console.error(`Exported ${Object.keys(exported.params).length} params to ${opts.output}`)
+      if (opts.fleet) {
+        // Fleet export: one YAML per device in output directory
+        if (!existsSync(opts.output)) mkdirSync(opts.output, { recursive: true })
+
+        const runner = new FleetRunner({ fleet: opts.fleet, verbose: true })
+        const results = await runner.run(async (client, deviceIp) => {
+          const info = await client.getDeviceInfo()
+          const cred = credentialStore.get(deviceIp)
+          if (!cred) throw new Error('No credentials')
+          const pc = new ParamsClient(deviceIp, cred.username, cred.password)
+          const exported = await pc.exportAll({
+            model: (info as any).ProdFullName ?? 'unknown',
+            firmware: (info as any).Version ?? 'unknown',
+            serial: (info as any).SerialNumber ?? (info as any).ProdSerialNumber ?? 'unknown',
+            ip: deviceIp,
+          })
+          const serial = (info as any).SerialNumber ?? (info as any).ProdSerialNumber ?? deviceIp.replace(/\./g, '-')
+          const filePath = `${opts.output}/${serial}-params.yaml`
+          writeFileSync(filePath, stringifyYaml(exported, { lineWidth: 120 }))
+          return { file: filePath, paramCount: Object.keys(exported.params).length }
+        })
+
+        const s = summarizeFleetResults(results)
+        for (const r of results) {
+          if (r.success) console.log(`✓ ${r.ip}: ${r.data!.paramCount} params → ${r.data!.file}`)
+          else console.error(`✗ ${r.ip}: ${r.error}`)
+        }
+        process.stderr.write(`\n${s.succeeded}/${s.total} exported\n`)
+      } else {
+        // Single device export
+        const cred = credentialStore.get(ip!)
+        if (!cred) { console.error(`No credentials for ${ip}. Run: axctl auth add ${ip}`); process.exit(1) }
+        const vapix = new VapixClient(ip!, cred.username, cred.password)
+        const info = await vapix.getDeviceInfo()
+        const client = new ParamsClient(ip!, cred.username, cred.password)
+        const exported = await client.exportAll({
+          model: info.Model ?? 'unknown',
+          firmware: info.Version ?? 'unknown',
+          serial: info.ProdSerialNumber ?? 'unknown',
+          ip: ip!,
+        })
+        writeFileSync(opts.output, stringifyYaml(exported, { lineWidth: 120 }))
+        console.error(`Exported ${Object.keys(exported.params).length} params to ${opts.output}`)
+      }
     } catch (e) {
       console.error(e instanceof Error ? e.message : e)
       process.exit(1)
     }
   })
 
-// axctl params diff <ip> --file <path>
+// axctl params diff [ip] --file <path> [--fleet <name>]
 params
-  .command('diff <ip>')
+  .command('diff [ip]')
   .description('compare device parameters against a baseline export')
   .requiredOption('--file <path>', 'baseline YAML file to diff against')
-  .action(async (ip: string, opts: { file: string }) => {
+  .option('--fleet <name>', 'target fleet for fleet-wide drift report')
+  .action(async (ip: string | undefined, opts: { file: string; fleet?: string }) => {
+    if (!ip && !opts.fleet) { console.error('Specify device IP or --fleet <name>'); process.exit(1) }
     const fmt = program.opts().format as string
+
     try {
-      const client = getClient(ip)
       const baselineYaml = readFileSync(opts.file, 'utf-8')
       const baseline = parseYaml(baselineYaml) as any
-      const diffs = await client.diff(baseline)
-      if (diffs.length === 0) {
-        console.log('✓ No drift detected — device matches baseline')
-      } else {
-        const rows = diffs.map((d) => ({
-          param: d.param,
-          baseline: d.baseline ?? '(none)',
-          current: d.current ?? '(none)',
-          status: d.status,
-        }))
+
+      if (opts.fleet) {
+        // Fleet-wide diff
+        const runner = new FleetRunner({ fleet: opts.fleet, verbose: true })
+        const results = await runner.run(async (_client, deviceIp) => {
+          const cred = credentialStore.get(deviceIp)
+          if (!cred) throw new Error('No credentials')
+          const pc = new ParamsClient(deviceIp, cred.username, cred.password)
+          const diffs = await pc.diff(baseline)
+          const driftCount = diffs.filter(d => d.status === 'drift').length
+          const missingCount = diffs.filter(d => d.status === 'missing_on_device').length
+          return { totalParams: Object.keys(baseline.params).length, drifted: driftCount, missing: missingCount }
+        })
+
+        // Summary table
+        const rows = results.map(r => {
+          if (!r.success) return { device: r.ip, status: 'error', totalParams: '-', matching: '-', drifted: '-', error: r.error ?? '' }
+          const d = r.data!
+          const matching = d.totalParams - d.drifted - d.missing
+          return {
+            device: r.ip,
+            status: d.drifted === 0 && d.missing === 0 ? '✓ match' : '⚠ drift',
+            totalParams: String(d.totalParams),
+            matching: String(matching),
+            drifted: String(d.drifted),
+          }
+        })
         console.log(formatOutput(rows, fmt))
+
+        const s = summarizeFleetResults(results)
+        const driftDevices = results.filter(r => r.success && (r.data!.drifted > 0 || r.data!.missing > 0)).length
+        process.stderr.write(`\n${s.total} device${s.total === 1 ? '' : 's'} checked — ${driftDevices} with drift, ${s.failed} errors\n`)
+      } else {
+        // Single device diff
+        const client = getClient(ip!)
+        const diffs = await client.diff(baseline)
+        if (diffs.length === 0) {
+          console.log('✓ No drift detected — device matches baseline')
+        } else {
+          const rows = diffs.map((d) => ({
+            param: d.param,
+            baseline: d.baseline ?? '(none)',
+            current: d.current ?? '(none)',
+            status: d.status,
+          }))
+          console.log(formatOutput(rows, fmt))
+        }
       }
     } catch (e) {
       console.error(e instanceof Error ? e.message : e)

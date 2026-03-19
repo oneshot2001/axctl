@@ -1,8 +1,9 @@
-import { writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { program } from './root.js'
 import { StreamClient } from 'axctl-core'
 import { credentialStore } from 'axctl-core'
 import { formatOutput } from 'axctl-core'
+import { FleetRunner, summarizeFleetResults } from 'axctl-core'
 
 const stream = program
   .command('stream')
@@ -81,29 +82,79 @@ stream
     }
   })
 
-// axctl stream zipstream <ip> [--strength <level>]
+// axctl stream zipstream [ip] [--strength <level>] [--fleet <name>]
 stream
-  .command('zipstream <ip>')
+  .command('zipstream [ip]')
   .description('view or configure Zipstream settings')
   .option('--strength <level>', 'set Zipstream strength (off|low|medium|high|higher|extreme)')
-  .action(async (ip: string, opts: { strength?: string }) => {
-    const cred = credentialStore.get(ip)
-    if (!cred) { console.error(`No credentials for ${ip}. Run: axctl auth add ${ip}`); process.exit(1) }
-    try {
-      const client = new StreamClient(ip, cred.username, cred.password)
-      const fmt = program.opts().format as string
+  .option('--fleet <name>', 'target fleet')
+  .action(async (ip: string | undefined, opts: { strength?: string; fleet?: string }) => {
+    if (!ip && !opts.fleet) { console.error('Specify device IP or --fleet <name>'); process.exit(1) }
+    const fmt = program.opts().format as string
 
-      if (!opts.strength) {
-        // Read-only mode
-        const config = await client.getZipstreamConfig()
-        console.log(formatOutput([{ strength: config.strength }], fmt))
-      } else {
-        if (program.opts().dryRun) {
-          console.log(`[dry-run] Would set Zipstream strength → ${opts.strength}`)
-          return
+    try {
+      if (opts.fleet) {
+        const runner = new FleetRunner({ fleet: opts.fleet, verbose: true })
+
+        if (!opts.strength) {
+          // Fleet read-only: show Zipstream config for all devices
+          const results = await runner.run(async (_client, deviceIp) => {
+            const cred = credentialStore.get(deviceIp)
+            if (!cred) throw new Error('No credentials')
+            const sc = new StreamClient(deviceIp, cred.username, cred.password)
+            const config = await sc.getZipstreamConfig()
+            return { strength: config.strength }
+          })
+
+          const rows = results.map(r => {
+            if (!r.success) return { device: r.ip, strength: 'error', error: r.error ?? '' }
+            return { device: r.ip, strength: r.data!.strength }
+          })
+          console.log(formatOutput(rows, fmt))
+
+          const s = summarizeFleetResults(results)
+          process.stderr.write(`\n${s.succeeded}/${s.total} queried\n`)
+        } else {
+          // Fleet set: apply Zipstream strength to all devices
+          if (program.opts().dryRun) {
+            const devices = await runner.resolveDevices()
+            for (const d of devices) console.log(`[dry-run] ${d}: Would set Zipstream strength → ${opts.strength}`)
+            return
+          }
+
+          const results = await runner.run(async (_client, deviceIp) => {
+            const cred = credentialStore.get(deviceIp)
+            if (!cred) throw new Error('No credentials')
+            const sc = new StreamClient(deviceIp, cred.username, cred.password)
+            await sc.setZipstreamStrength(opts.strength as import('axctl-core').ZipstreamStrength)
+            return { strength: opts.strength! }
+          })
+
+          for (const r of results) {
+            if (r.success) console.log(`✓ ${r.ip}: Zipstream → ${r.data!.strength}`)
+            else console.error(`✗ ${r.ip}: ${r.error}`)
+          }
+
+          const s = summarizeFleetResults(results)
+          process.stderr.write(`\n${s.succeeded}/${s.total} updated\n`)
         }
-        await client.setZipstreamStrength(opts.strength as import('axctl-core').ZipstreamStrength)
-        console.log(`✓ Zipstream strength set to ${opts.strength}`)
+      } else {
+        // Single device
+        const cred = credentialStore.get(ip!)
+        if (!cred) { console.error(`No credentials for ${ip}. Run: axctl auth add ${ip}`); process.exit(1) }
+        const client = new StreamClient(ip!, cred.username, cred.password)
+
+        if (!opts.strength) {
+          const config = await client.getZipstreamConfig()
+          console.log(formatOutput([{ strength: config.strength }], fmt))
+        } else {
+          if (program.opts().dryRun) {
+            console.log(`[dry-run] Would set Zipstream strength → ${opts.strength}`)
+            return
+          }
+          await client.setZipstreamStrength(opts.strength as import('axctl-core').ZipstreamStrength)
+          console.log(`✓ Zipstream strength set to ${opts.strength}`)
+        }
       }
     } catch (e) {
       console.error(e instanceof Error ? e.message : e)
@@ -111,27 +162,58 @@ stream
     }
   })
 
-// axctl stream snapshot <ip>
+// axctl stream snapshot [ip] [--fleet <name>] [--output <path|dir>]
 stream
-  .command('snapshot <ip>')
+  .command('snapshot [ip]')
   .description('capture a JPEG still image')
-  .option('--output <path>', 'save to file (default: stdout as binary)')
+  .option('--output <path>', 'save to file (or directory for fleet)')
+  .option('--fleet <name>', 'target fleet (requires --output <dir>)')
   .option('--resolution <WxH>', 'override resolution')
   .option('--compression <0-100>', 'JPEG compression level')
-  .action(async (ip: string, opts: { output?: string; resolution?: string; compression?: string }) => {
-    const cred = credentialStore.get(ip)
-    if (!cred) { console.error(`No credentials for ${ip}. Run: axctl auth add ${ip}`); process.exit(1) }
+  .action(async (ip: string | undefined, opts: { output?: string; fleet?: string; resolution?: string; compression?: string }) => {
+    if (!ip && !opts.fleet) { console.error('Specify device IP or --fleet <name>'); process.exit(1) }
+
     try {
-      const client = new StreamClient(ip, cred.username, cred.password)
-      const jpeg = await client.captureSnapshot({
-        resolution: opts.resolution,
-        compression: opts.compression ? parseInt(opts.compression, 10) : undefined,
-      })
-      if (opts.output) {
-        writeFileSync(opts.output, jpeg)
-        console.error(`Saved ${jpeg.length} bytes to ${opts.output}`)
+      if (opts.fleet) {
+        if (!opts.output) { console.error('--output <dir> is required when using --fleet'); process.exit(1) }
+        if (!existsSync(opts.output)) mkdirSync(opts.output, { recursive: true })
+
+        const runner = new FleetRunner({ fleet: opts.fleet, verbose: true })
+        const results = await runner.run(async (_client, deviceIp) => {
+          const cred = credentialStore.get(deviceIp)
+          if (!cred) throw new Error('No credentials')
+          const sc = new StreamClient(deviceIp, cred.username, cred.password)
+          const jpeg = await sc.captureSnapshot({
+            resolution: opts.resolution,
+            compression: opts.compression ? parseInt(opts.compression, 10) : undefined,
+          })
+          const filePath = `${opts.output}/${deviceIp.replace(/\./g, '-')}.jpg`
+          writeFileSync(filePath, jpeg)
+          return { file: filePath, bytes: jpeg.length }
+        })
+
+        for (const r of results) {
+          if (r.success) console.log(`✓ ${r.ip}: ${r.data!.bytes} bytes → ${r.data!.file}`)
+          else console.error(`✗ ${r.ip}: ${r.error}`)
+        }
+
+        const s = summarizeFleetResults(results)
+        process.stderr.write(`\n${s.succeeded}/${s.total} captured\n`)
       } else {
-        process.stdout.write(jpeg)
+        // Single device
+        const cred = credentialStore.get(ip!)
+        if (!cred) { console.error(`No credentials for ${ip}. Run: axctl auth add ${ip}`); process.exit(1) }
+        const client = new StreamClient(ip!, cred.username, cred.password)
+        const jpeg = await client.captureSnapshot({
+          resolution: opts.resolution,
+          compression: opts.compression ? parseInt(opts.compression, 10) : undefined,
+        })
+        if (opts.output) {
+          writeFileSync(opts.output, jpeg)
+          console.error(`Saved ${jpeg.length} bytes to ${opts.output}`)
+        } else {
+          process.stdout.write(jpeg)
+        }
       }
     } catch (e) {
       console.error(e instanceof Error ? e.message : e)
