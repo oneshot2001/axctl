@@ -7,7 +7,7 @@ describe('axctl', () => {
       cwd: '/Users/matthewvisher/Documents/axctl',
       encoding: 'utf8',
     })
-    expect(result.stdout.trim()).toBe('0.1.0')
+    expect(result.stdout.trim()).toBe('0.3.0')
   })
 
   it('outputs help with expected commands', () => {

@@ -3,23 +3,28 @@ import { Command } from 'commander'
 function generateBashCompletions(name: string): string {
   const commands = [
     'auth', 'devices', 'discover', 'fleet', 'aoa', 'apps', 'events', 'health', 'profile',
-    'recording', 'ptz', 'firmware', 'system', 'rules', 'config', 'telemetry', 'interactive', 'completions', 'help'
+    'recording', 'ptz', 'firmware', 'system', 'rules', 'config', 'telemetry',
+    'api', 'stream', 'params',
+    'interactive', 'completions', 'help'
   ]
   const authSubs = ['add', 'list', 'remove']
   const devicesSubs = ['info', 'ping', 'list']
   const fleetSubs = ['create', 'list', 'show', 'delete', 'ping', 'status', 'health', 'aoa', 'events']
   const aoaSubs = ['list', 'devices', 'capabilities', 'create', 'remove', 'rename', 'alarm', 'counts', 'occupancy', 'reset', 'export', 'import']
-  const appsSubs = ['list', 'start', 'stop']
+  const appsSubs = ['list', 'install', 'remove', 'restart', 'start', 'stop']
   const eventsSubs = ['stream', 'mqtt']
   const profileSubs = ['create', 'list', 'show', 'use', 'delete', 'update']
   const recordingSubs = ['list', 'start', 'stop', 'export']
-  const ptzSubs = ['goto', 'move', 'home', 'stop', 'position', 'preset']
-  const firmwareSubs = ['check', 'upgrade']
+  const ptzSubs = ['goto', 'move', 'home', 'stop', 'position', 'preset', 'tour', 'autotrack', 'capabilities']
+  const firmwareSubs = ['check', 'upgrade', 'upgrade-fleet', 'status']
   const systemSubs = ['info', 'time', 'network', 'users']
   const rulesSubs = ['list', 'enable', 'disable', 'remove', 'templates']
   const configSubs = ['get', 'set', 'unset', 'list', 'keys']
   const healthSubs = ['status', 'show', 'set', 'restart', 'export', 'import', 'fleet', 'fleet-restart', 'fleet-import']
   const telemetrySubs = ['stats']
+  const apiSubs = ['list', 'check', 'compare']
+  const streamSubs = ['profiles', 'create', 'delete', 'zipstream', 'snapshot']
+  const paramsSubs = ['get', 'set', 'list', 'export', 'diff', 'search']
   const globalOpts = ['-f', '--format', '-v', '--verbose', '--debug', '--dry-run', '--no-telemetry', '-h', '--help', '-V', '--version']
   const formats = ['table', 'json', 'jsonl', 'csv', 'yaml']
 
@@ -47,6 +52,9 @@ _${name}() {
     config) COMPREPLY=($(compgen -W "${configSubs.join(' ')}" -- "$cur")) ;;
     health) COMPREPLY=($(compgen -W "${healthSubs.join(' ')}" -- "$cur")) ;;
     telemetry) COMPREPLY=($(compgen -W "${telemetrySubs.join(' ')}" -- "$cur")) ;;
+    api) COMPREPLY=($(compgen -W "${apiSubs.join(' ')}" -- "$cur")) ;;
+    stream) COMPREPLY=($(compgen -W "${streamSubs.join(' ')}" -- "$cur")) ;;
+    params) COMPREPLY=($(compgen -W "${paramsSubs.join(' ')}" -- "$cur")) ;;
     *)
       if [[ "$cur" == -* ]]; then
         COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
@@ -87,6 +95,9 @@ _${name}() {
     'health:AXIS Image Health Analytics'
     'telemetry:local telemetry management'
     'interactive:start interactive REPL'
+    'api:API discovery'
+    'stream:video stream profiles'
+    'params:device parameters'
     'completions:generate shell completions'
     'help:display help'
   )
@@ -116,17 +127,20 @@ _${name}() {
         devices) _values 'subcommand' 'info[device details]' 'ping[check connectivity]' 'list[list all cameras]' ;;
         fleet) _values 'subcommand' 'create[create a fleet]' 'list[list fleets]' 'show[show fleet members]' 'delete[remove a fleet]' 'ping[check fleet reachability]' 'status[fleet device info]' 'health[fleet health check]' 'aoa[fleet AOA operations]' 'events[fleet event streaming]' ;;
         aoa) _values 'subcommand' 'list[list scenarios]' 'devices[list analytics devices]' 'capabilities[show capabilities]' 'create[create scenario]' 'remove[delete scenario]' 'rename[rename scenario]' 'alarm[fire test alarm]' 'counts[crossing counts]' 'occupancy[current occupancy]' 'reset[reset counts]' 'export[export config]' 'import[import config]' ;;
-        apps) _values 'subcommand' 'list[list apps]' 'start[start app]' 'stop[stop app]' ;;
+        apps) _values 'subcommand' 'list[list apps]' 'install[install .eap]' 'remove[uninstall app]' 'restart[restart app]' 'start[start app]' 'stop[stop app]' ;;
         events) _values 'subcommand' 'stream[WebSocket streaming]' 'mqtt[MQTT streaming]' ;;
         profile) _values 'subcommand' 'create[create profile]' 'list[list profiles]' 'show[show profile]' 'use[activate profile]' 'delete[remove profile]' 'update[update profile]' ;;
         recording) _values 'subcommand' 'list[list recordings]' 'start[trigger recording]' 'stop[stop recording]' 'export[download recording]' ;;
-        ptz) _values 'subcommand' 'goto[absolute move]' 'move[relative move]' 'home[go to home]' 'stop[stop movement]' 'position[current position]' 'preset[preset management]' ;;
-        firmware) _values 'subcommand' 'check[check firmware version]' 'upgrade[upload firmware]' ;;
+        ptz) _values 'subcommand' 'goto[absolute move]' 'move[relative move]' 'home[go to home]' 'stop[stop movement]' 'position[current position]' 'preset[preset management]' 'tour[guard tours]' 'autotrack[autotracking]' 'capabilities[PTZ capabilities]' ;;
+        firmware) _values 'subcommand' 'status[firmware info]' 'check[fleet firmware audit]' 'upgrade[upload firmware]' 'upgrade-fleet[rolling fleet upgrade]' ;;
         system) _values 'subcommand' 'info[device info]' 'time[date/time/NTP]' 'network[network config]' 'users[user list]' ;;
         rules) _values 'subcommand' 'list[list rules]' 'enable[enable rule]' 'disable[disable rule]' 'remove[delete rule]' 'templates[action templates]' ;;
         config) _values 'subcommand' 'get[get value]' 'set[set value]' 'unset[remove value]' 'list[list all values]' 'keys[list known keys]' ;;
         health) _values 'subcommand' 'status[running state and alerts]' 'show[detection config]' 'set[modify settings]' 'restart[force scene relearn]' 'export[export config]' 'import[import config]' 'fleet[fleet health dashboard]' 'fleet-restart[fleet relearn]' 'fleet-import[fleet config push]' ;;
         telemetry) _values 'subcommand' 'stats[collection statistics]' ;;
+        api) _values 'subcommand' 'list[list supported APIs]' 'check[check specific API]' 'compare[fleet capability matrix]' ;;
+        stream) _values 'subcommand' 'profiles[list profiles]' 'create[create profile]' 'delete[delete profile]' 'zipstream[Zipstream config]' 'snapshot[capture JPEG]' ;;
+        params) _values 'subcommand' 'get[get parameter]' 'set[set parameter]' 'list[list group]' 'export[export to YAML]' 'diff[diff against baseline]' 'search[search parameters]' ;;
         completions) _values 'shell' 'bash' 'zsh' 'fish' ;;
       esac
       ;;
@@ -168,6 +182,9 @@ function generateFishCompletions(name: string): string {
     `complete -c ${name} -n '__fish_use_subcommand' -a config -d 'Configuration'`,
     `complete -c ${name} -n '__fish_use_subcommand' -a health -d 'Image Health Analytics'`,
     `complete -c ${name} -n '__fish_use_subcommand' -a telemetry -d 'Telemetry management'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a api -d 'API discovery'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a stream -d 'Stream profiles'`,
+    `complete -c ${name} -n '__fish_use_subcommand' -a params -d 'Device parameters'`,
     `complete -c ${name} -n '__fish_use_subcommand' -a interactive -d 'Interactive REPL'`,
     `complete -c ${name} -n '__fish_use_subcommand' -a completions -d 'Shell completions'`,
     ``,
@@ -276,6 +293,27 @@ function generateFishCompletions(name: string): string {
     `complete -c ${name} -n '__fish_seen_subcommand_from telemetry' -a stats -d 'Collection statistics'`,
     ``,
     `# completions subcommands`,
+    `# api subcommands`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from api' -a list -d 'List supported APIs'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from api' -a check -d 'Check specific API'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from api' -a compare -d 'Fleet capability matrix'`,
+    ``,
+    `# stream subcommands`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from stream' -a profiles -d 'List profiles'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from stream' -a create -d 'Create profile'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from stream' -a delete -d 'Delete profile'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from stream' -a zipstream -d 'Zipstream config'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from stream' -a snapshot -d 'Capture JPEG'`,
+    ``,
+    `# params subcommands`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from params' -a get -d 'Get parameter'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from params' -a set -d 'Set parameter'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from params' -a list -d 'List group'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from params' -a export -d 'Export to YAML'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from params' -a diff -d 'Diff against baseline'`,
+    `complete -c ${name} -n '__fish_seen_subcommand_from params' -a search -d 'Search parameters'`,
+    ``,
+    `# completions subcommands`,
     `complete -c ${name} -n '__fish_seen_subcommand_from completions' -a 'bash zsh fish' -d 'Shell type'`,
   ]
   return lines.join('\n')
@@ -286,7 +324,7 @@ export const program = new Command()
 program
   .name('axctl')
   .description('Axis camera analytics CLI — configure AOA, stream events, discover devices')
-  .version('0.2.0')
+  .version('0.3.0')
   .option('-f, --format <format>', 'output format (table|json|jsonl|csv|yaml)', 'table')
   .option('-v, --verbose', 'verbose output')
   .option('--debug', 'debug logging (show raw requests/responses)')
