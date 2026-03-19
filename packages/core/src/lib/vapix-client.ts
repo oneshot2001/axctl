@@ -1,4 +1,4 @@
-import { digestFetch } from './digest-auth.js'
+import { digestFetch, buildDigestHeader } from './digest-auth.js'
 import { telemetry } from './telemetry.js'
 
 export interface DeviceProperties {
@@ -115,5 +115,70 @@ export class VapixClient {
     } catch {
       return false
     }
+  }
+
+  /** POST with JSON body, return parsed JSON response. Convenience for JSON-RPC calls. */
+  async postJson(path: string, body: object): Promise<unknown> {
+    return this.post(path, body)
+  }
+
+  /** POST multipart/form-data with digest auth. Used for ACAP install and firmware upload. */
+  async postMultipart(path: string, fieldName: string, fileData: Buffer, filename: string): Promise<string> {
+    const boundary = '----axctl' + Date.now()
+    const preamble = [
+      `--${boundary}\r\n`,
+      `Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"\r\n`,
+      `Content-Type: application/octet-stream\r\n\r\n`,
+    ].join('')
+    const epilogue = `\r\n--${boundary}--\r\n`
+    const bodyParts = Buffer.concat([Buffer.from(preamble), fileData, Buffer.from(epilogue)])
+
+    const url = `${this.baseUrl}${path}`
+    // Probe for digest challenge
+    const probe = await fetch(url, { method: 'POST' })
+    if (probe.status !== 401) {
+      if (!probe.ok) throw new Error(`Multipart POST ${path} → ${probe.status} ${probe.statusText}`)
+      return (await probe.text()).trim()
+    }
+
+    const wwwAuth = probe.headers.get('www-authenticate')
+    if (!wwwAuth) throw new Error('401 but no WWW-Authenticate header')
+
+    const fields: Record<string, string> = {}
+    const re = /(\w+)="([^"]+)"/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(wwwAuth)) !== null) {
+      if (m[1] && m[2]) fields[m[1]] = m[2]
+    }
+    const challenge = {
+      realm: fields['realm'] ?? '', nonce: fields['nonce'] ?? '', algorithm: 'MD5',
+      qop: fields['qop'], opaque: fields['opaque'],
+    }
+    const urlPath = new URL(url).pathname
+    const authHeader = buildDigestHeader('POST', urlPath, this.username, this.password, challenge)
+
+    const res = await fetch(url, {
+      method: 'POST',
+      body: bodyParts,
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      },
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Multipart POST ${path} → ${res.status} — ${text.substring(0, 200)}`)
+    }
+    return (await res.text()).trim()
+  }
+
+  /** GET request returning raw binary buffer. Used for JPEG snapshots. */
+  async getBuffer(path: string): Promise<Buffer> {
+    const url = `${this.baseUrl}${path}`
+    const res = await digestFetch(url, 'GET', this.username, this.password)
+    if (!res.ok) throw new Error(`VAPIX GET ${path} → ${res.status} ${res.statusText}`)
+    const ab = await res.arrayBuffer()
+    return Buffer.from(ab)
   }
 }

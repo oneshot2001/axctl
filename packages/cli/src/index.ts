@@ -19,6 +19,9 @@ import './cli/alphavision.js'
 import './cli/config.js'
 import './cli/health.js'
 import './cli/telemetry.js'
+import './cli/api.js'
+import './cli/stream.js'
+import './cli/params.js'
 import { startInteractive } from './cli/interactive.js'
 
 // Register interactive as a named command too

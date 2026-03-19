@@ -63,6 +63,10 @@ export type { MqttStreamOptions } from './lib/mqtt-stream.js'
 export { fleetExec } from './lib/fleet-ops.js'
 export type { FleetResult } from './lib/fleet-ops.js'
 
+// --- Fleet Runner (V1.5 — concurrency + batching) ---
+export { FleetRunner, summarizeFleetResults } from './lib/fleet-runner.js'
+export type { FleetRunnerOptions, FleetDeviceResult } from './lib/fleet-runner.js'
+
 // --- Fleet Store ---
 export { fleetStore } from './lib/fleet-store.js'
 export type { Fleet } from './lib/fleet-store.js'
@@ -97,6 +101,18 @@ export type { DateTimeInfo, NetworkInfo } from './lib/system-client.js'
 // --- Rules (Action Rules) ---
 export { RulesClient } from './lib/rules-client.js'
 export type { ActionRule } from './lib/rules-client.js'
+
+// --- API Discovery ---
+export { ApiDiscoveryClient, requireApi, KNOWN_API_IDS } from './lib/api-discovery.js'
+export type { ApiInfo } from './lib/api-discovery.js'
+
+// --- Stream Profiles ---
+export { StreamClient } from './lib/stream-client.js'
+export type { StreamProfile, ZipstreamConfig, SnapshotOptions, VideoCodec, ZipstreamStrength } from './lib/stream-client.js'
+
+// --- Parameters ---
+export { ParamsClient, parseParamResponse } from './lib/params-client.js'
+export type { ParamDiff, ParamExport } from './lib/params-client.js'
 
 // --- Formatters ---
 export { formatOutput } from './formatters/index.js'

@@ -75,4 +75,42 @@ export const appsClient = {
       `action=stop&package=${encodeURIComponent(packageName)}`)
     if (r.status !== 200) throw new Error(`Stop failed: ${r.status}`)
   },
+
+  async install(host: string, username: string, password: string, eapData: Buffer, filename: string): Promise<string> {
+    const { VapixClient } = await import('./vapix-client.js')
+    const vapix = new VapixClient(host, username, password)
+    return vapix.postMultipart('/axis-cgi/applications/upload.cgi', 'packfil', eapData, filename)
+  },
+
+  async remove(host: string, username: string, password: string, packageName: string): Promise<void> {
+    const r = await formFetch(host, '/axis-cgi/applications/control.cgi', username, password,
+      `action=remove&package=${encodeURIComponent(packageName)}`)
+    if (r.status !== 200) throw new Error(`Remove failed: ${r.status}`)
+  },
+
+  async restart(host: string, username: string, password: string, packageName: string): Promise<void> {
+    const r = await formFetch(host, '/axis-cgi/applications/control.cgi', username, password,
+      `action=restart&package=${encodeURIComponent(packageName)}`)
+    if (r.status !== 200) throw new Error(`Restart failed: ${r.status}`)
+  },
+
+  async getConfig(host: string, username: string, password: string, packageName: string): Promise<Record<string, string>> {
+    const r = await formFetch(host, '/axis-cgi/applications/config.cgi', username, password,
+      `action=list&package=${encodeURIComponent(packageName)}`)
+    if (!r.ok) throw new Error(`Config list failed: ${r.status}`)
+    const text = await r.text()
+    const config: Record<string, string> = {}
+    for (const line of text.split('\n')) {
+      const eq = line.indexOf('=')
+      if (eq > 0) config[line.substring(0, eq).trim()] = line.substring(eq + 1).trim()
+    }
+    return config
+  },
+
+  async setConfig(host: string, username: string, password: string, packageName: string, params: Record<string, string>): Promise<void> {
+    const paramStr = Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
+    const r = await formFetch(host, '/axis-cgi/applications/config.cgi', username, password,
+      `action=set&package=${encodeURIComponent(packageName)}&${paramStr}`)
+    if (!r.ok) throw new Error(`Config set failed: ${r.status}`)
+  },
 }

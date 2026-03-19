@@ -108,4 +108,35 @@ export class FirmwareClient {
 
     return (await res.text()).trim()
   }
+
+  /** Poll systemready API until device is back online after reboot. */
+  async waitForReady(timeoutMs = 300_000, pollIntervalMs = 5_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      try {
+        const url = `${this.baseUrl}/axis-cgi/systemready.cgi`
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+        if (res.ok) {
+          const text = await res.text()
+          if (text.includes('"yes"') || text.includes('systemready')) return true
+        }
+      } catch {
+        // Device is rebooting — connection refused is expected
+      }
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+    }
+    return false
+  }
+
+  /** Factory-reset the device. "soft" preserves network settings, "hard" resets everything. */
+  async factoryDefault(mode: 'soft' | 'hard' = 'soft'): Promise<boolean> {
+    const body = JSON.stringify({
+      apiVersion: '1.0',
+      method: 'factoryDefault',
+      params: { mode },
+    })
+    const url = `${this.baseUrl}/axis-cgi/firmwaremanagement.cgi`
+    const res = await digestFetch(url, 'POST', this.username, this.password, body)
+    return res.ok
+  }
 }

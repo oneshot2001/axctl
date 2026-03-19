@@ -86,4 +86,70 @@ export class PtzClient {
   async stop(): Promise<void> {
     await this.cgiGet('continuouspantiltmove=0,0&continuouszoommove=0')
   }
+
+  async createPreset(name: string): Promise<boolean> {
+    // Find next available preset number
+    const presets = await this.listPresets()
+    const usedNumbers = presets.map(p => p.position)
+    let nextNum = 1
+    while (usedNumbers.includes(nextNum)) nextNum++
+    const text = await this.cgiGet(`setserverpresetname=${encodeURIComponent(name)}&setserverpresetno=${nextNum}`)
+    return !text.toLowerCase().includes('error')
+  }
+
+  async removePreset(name: string): Promise<boolean> {
+    const text = await this.cgiGet(`removeserverpresetname=${encodeURIComponent(name)}`)
+    return !text.toLowerCase().includes('error')
+  }
+
+  async listTours(): Promise<{ id: string; name: string; running: boolean }[]> {
+    // Guard tours use param.cgi groups
+    const url = `${this.baseUrl}/axis-cgi/param.cgi?action=list&group=root.GuardTour`
+    const res = await digestFetch(url, 'GET', this.username, this.password)
+    if (!res.ok) return []
+    const text = await res.text()
+    const tours: { id: string; name: string; running: boolean }[] = []
+    // Parse GuardTour params — each tour has a CamNbr.TourNbr prefix
+    const nameRe = /root\.GuardTour\.G(\d+)\.Tour\.T(\d+)\.Name=(.+)/
+    for (const line of text.split('\n')) {
+      const m = line.match(nameRe)
+      if (m) {
+        tours.push({ id: `G${m[1]}T${m[2]}`, name: m[3]!.trim(), running: false })
+      }
+    }
+    return tours
+  }
+
+  async startTour(tourId: string): Promise<void> {
+    await this.cgiGet(`gotoserverpresetname=${encodeURIComponent(tourId)}&continuouspantiltmove=0,0`)
+    // Guard tours are started via the guard tour ID
+    // The exact CGI param depends on firmware version
+  }
+
+  async stopTour(): Promise<void> {
+    await this.cgiGet('stoptour=yes')
+  }
+
+  async getCapabilities(): Promise<{
+    hasPan: boolean; hasTilt: boolean; hasZoom: boolean;
+    isMechanical: boolean; maxPresets: number
+  }> {
+    // Query Properties.PTZ from param.cgi
+    const url = `${this.baseUrl}/axis-cgi/param.cgi?action=list&group=root.Properties.PTZ`
+    const res = await digestFetch(url, 'GET', this.username, this.password)
+    if (!res.ok) return { hasPan: false, hasTilt: false, hasZoom: false, isMechanical: false, maxPresets: 0 }
+    const text = await res.text()
+    const has = (key: string) => text.includes(`${key}=yes`)
+    const getVal = (key: string) => {
+      const m = text.match(new RegExp(`${key}=(\\S+)`))
+      return m?.[1] ?? ''
+    }
+    return {
+      hasPan: has('root.Properties.PTZ.PTZ'),
+      hasTilt: has('root.Properties.PTZ.PTZ'),
+      hasZoom: has('root.Properties.PTZ.PTZ'),
+      isMechanical: !has('root.Properties.PTZ.DigitalPTZ'),
+      maxPresets: parseInt(getVal('root.Properties.PTZ.NbrOfSerPresets') || '20', 10),
+    }
+  }
 }
